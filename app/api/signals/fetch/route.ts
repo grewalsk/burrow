@@ -32,6 +32,7 @@ export async function POST(req: Request): Promise<Response> {
           metadata: {
             doc_type: "signal",
             signal_id: s.id,
+            // New descriptive keys
             platform: s.source === "X" ? "X" : s.source === "REDDIT" ? "Reddit" : s.source === "LINKEDIN" ? "LinkedIn" : "X",
             author_handle: s.handle.replace(/^[@u]\/?/, ""),
             author_profile_url: "",
@@ -44,6 +45,13 @@ export async function POST(req: Request): Promise<Response> {
             enriched: "false",
             status: "new",
             sample: "false",
+            // Legacy aliases (rank/draft/signals routes consume these)
+            source: s.source,
+            handle: s.handle.replace(/^[@u]\/?/, ""),
+            context: s.context ?? "",
+            body: s.body,
+            url: s.url,
+            posted_at: String(s.posted_at),
           },
         }),
       ),

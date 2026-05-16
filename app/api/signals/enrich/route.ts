@@ -118,6 +118,12 @@ export async function POST(req: Request): Promise<Response> {
         enriched_role: contact.role,
         enriched_company: contact.company ?? "",
         status: "enriched",
+        // Legacy aliases for downstream consumers
+        contact_name: contact.name,
+        contact_email: contact.email,
+        contact_role: contact.role,
+        contact_company: contact.company ?? "",
+        contact_linkedin: contact.linkedin ?? "",
       },
     });
     return NextResponse.json({
@@ -136,7 +142,18 @@ export async function POST(req: Request): Promise<Response> {
     await updateMetadata({
       collectionName: collection,
       documentPath: doc.path,
-      metadata: { ...meta, enriched: "true", outreach_mode: "reply", status: "enriched" },
+      metadata: {
+        ...meta,
+        enriched: "true",
+        outreach_mode: "reply",
+        status: "enriched",
+        // Legacy aliases — keep contact_* in sync even on reply-only path so
+        // draftLLM doesn't crash on missing fields.
+        contact_name: String(meta.contact_name ?? meta.enriched_name ?? handle),
+        contact_email: "",
+        contact_role: String(meta.contact_role ?? meta.enriched_role ?? ""),
+        contact_company: String(meta.contact_company ?? meta.enriched_company ?? ""),
+      },
     });
     return NextResponse.json({
       ok: true,
@@ -174,7 +191,18 @@ export async function POST(req: Request): Promise<Response> {
     await updateMetadata({
       collectionName: collection,
       documentPath: doc.path,
-      metadata: { ...meta, enriched: "true", outreach_mode: "reply", status: "enriched" },
+      metadata: {
+        ...meta,
+        enriched: "true",
+        outreach_mode: "reply",
+        status: "enriched",
+        // Legacy aliases — keep contact_* in sync even on reply-only path so
+        // draftLLM doesn't crash on missing fields.
+        contact_name: String(meta.contact_name ?? meta.enriched_name ?? handle),
+        contact_email: "",
+        contact_role: String(meta.contact_role ?? meta.enriched_role ?? ""),
+        contact_company: String(meta.contact_company ?? meta.enriched_company ?? ""),
+      },
     });
     return NextResponse.json({
       ok: true,
@@ -201,6 +229,11 @@ export async function POST(req: Request): Promise<Response> {
         enriched_role: contact.role,
         enriched_company: contact.company,
         status: "enriched",
+        // Legacy aliases for downstream consumers
+        contact_name: contact.name || handle,
+        contact_email: "",
+        contact_role: contact.role,
+        contact_company: contact.company,
       },
     });
     return NextResponse.json({
@@ -227,6 +260,11 @@ export async function POST(req: Request): Promise<Response> {
       enriched_role: contact.role,
       enriched_company: contact.company,
       status: "enriched",
+      // Legacy aliases for downstream consumers (draftLLM reads these)
+      contact_name: contact.name || handle,
+      contact_email: contact.email,
+      contact_role: contact.role,
+      contact_company: contact.company,
     },
   });
 

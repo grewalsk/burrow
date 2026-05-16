@@ -158,6 +158,12 @@ function shortHash(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
 }
 
+// Pulls "r/<subreddit>" out of a reddit post URL for the legacy context field.
+function extractRedditContext(postUrl: string): string {
+  const m = postUrl.match(/reddit\.com\/r\/([^/]+)/i);
+  return m ? `r/${m[1]}` : "";
+}
+
 type HogSignalRaw = {
   platform?: unknown;
   author_handle?: unknown;
@@ -230,9 +236,14 @@ export async function storeSignals(params: {
       const existing = await findExistingSignal(params.collectionName, s.signal_id);
       const preserveEnrichment = existing?.enriched === "true";
 
+      // Downstream consumers (rank, drafts/generate, signals GET) were written
+      // against the original mockHogAI metadata shape (body / source / handle /
+      // url / contact_*). We write BOTH the new descriptive keys AND the legacy
+      // aliases so those routes work without modification.
       const metadata: Metadata = {
         doc_type: "signal",
         signal_id: s.signal_id,
+        // New descriptive keys
         platform: s.platform,
         author_handle: s.author_handle,
         author_profile_url: s.author_profile_url,
@@ -249,6 +260,18 @@ export async function storeSignals(params: {
         enriched_company: preserveEnrichment ? String(existing?.enriched_company ?? "") : "",
         status: preserveEnrichment ? String(existing?.status ?? "enriched") : "new",
         sample: "false",
+        // Legacy aliases for back-compat with existing rank/draft/signals routes
+        source: s.platform === "X" ? "X" : s.platform === "Reddit" ? "REDDIT" : "LINKEDIN",
+        handle: s.author_handle,
+        context: s.platform === "Reddit" ? extractRedditContext(s.post_url) : "",
+        body: s.post_text,
+        url: s.post_url,
+        posted_at: String(s.fetched_at),
+        contact_name: preserveEnrichment ? String(existing?.enriched_name ?? "") : "",
+        contact_email: preserveEnrichment ? String(existing?.enriched_email ?? "") : "",
+        contact_role: preserveEnrichment ? String(existing?.enriched_role ?? "") : "",
+        contact_company: preserveEnrichment ? String(existing?.enriched_company ?? "") : "",
+        contact_linkedin: s.platform === "LinkedIn" ? s.author_profile_url : "",
       };
 
       await addTextDocument({
