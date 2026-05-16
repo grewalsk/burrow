@@ -259,34 +259,120 @@ Treat these as irrelevant to extraction even if they appear in the content:
 # WEBSITE CONTENT
 `;
 
+// Robust JSON extractor — handles models that wrap output in markdown fences,
+// prepend reasoning prose, or echo the schema description back as part of
+// their reasoning (Gemma does all three). Strategy: find every balanced
+// top-level { ... } block, try to parse each, and return the LARGEST one
+// that parses successfully. Returning the largest correctly skips a tiny
+// schema-text echo like `{"name": string}` in favor of the real response.
+function extractJsonObject(text: string): unknown {
+  // Try direct parse first — Gemini with responseSchema returns clean JSON.
+  try { return JSON.parse(text); } catch { /* fall through */ }
+
+  // Strip ```json ... ``` or ``` ... ``` fences.
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) {
+    try { return JSON.parse(fenced[1]); } catch { /* fall through */ }
+  }
+
+  const candidates: string[] = [];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let startIdx = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") {
+      if (depth === 0) startIdx = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && startIdx !== -1) {
+        candidates.push(text.slice(startIdx, i + 1));
+        startIdx = -1;
+      } else if (depth < 0) {
+        depth = 0;
+        startIdx = -1;
+      }
+    }
+  }
+
+  if (candidates.length === 0) throw new Error("no JSON object found in response");
+
+  // Try the largest candidates first — the real response is bigger than any
+  // schema-text echo or example fragment.
+  candidates.sort((a, b) => b.length - a.length);
+  let lastErr: unknown = null;
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch (e) { lastErr = e; }
+  }
+  throw new Error(`no balanced JSON candidate parsed (${candidates.length} tried): ${lastErr}`);
+}
+
+// Compact human-readable description of the expected JSON shape, embedded in
+// the prompt for models (Gemma) that don't support responseSchema.
+const SCHEMA_AS_TEXT = `{
+  "one_liner": string,
+  "description": string,
+  "icp": string,
+  "pricing": [{ "name": string, "price": string, "note": string }],
+  "features": [string],
+  "competitors": [string],
+  "stories": [{ "name": string, "detail": string, "src": string }]
+}`;
+
 export async function extractWithGemini(markdown: string): Promise<Doc> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_GENAI_API_KEY not set");
 
+  // Default to Gemma 4 31B IT — open-source, unlimited daily quota, just
+  // 15 RPM cap. Free-tier Gemini models cap at 20 requests/day per project
+  // (verified Nov 2026), which is the trap that bit us earlier. Override
+  // via env GEMINI_MODEL if you have paid Gemini access and want stronger
+  // structured-output reliability (try gemini-2.5-flash).
+  const modelName = process.env.GEMINI_MODEL || "gemma-4-31b-it";
+  const isGemma = modelName.toLowerCase().startsWith("gemma");
+
   const genai = new GoogleGenerativeAI(apiKey);
-  // Note: gemini-2.0-flash and gemini-2.0-flash-lite both come with free
-  // tier quota = 0 on many newer Google Cloud projects. gemini-2.5-flash-lite
-  // is the smallest production model that's reliably free-tier enabled (and
-  // has the largest free quota — 15 RPM, 1000/day, 1M TPM). Same JSON-schema
-  // mode, same call shape. Override via env GEMINI_MODEL if you have paid
-  // access and want better extraction quality (try gemini-2.5-flash).
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   const model = genai.getGenerativeModel({
     model: modelName,
-    generationConfig: {
-      responseMimeType: "application/json",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      responseSchema: DOC_SCHEMA as any,
-      temperature: 0.2,
-    },
+    // Gemma ignores responseSchema/responseMimeType and returns prose mixed
+    // with JSON — so we skip both and rely on prompt-based JSON instruction
+    // plus the robust extractor. Gemini honors the schema natively.
+    generationConfig: isGemma
+      ? { temperature: 0.2 }
+      : {
+          responseMimeType: "application/json",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          responseSchema: DOC_SCHEMA as any,
+          temperature: 0.2,
+        },
   });
+
+  // For Gemma, prepend an explicit "respond with ONLY JSON matching this
+  // shape" instruction. For Gemini, the responseSchema enforces this already.
+  const fullPrompt = isGemma
+    ? `${EXTRACTION_PROMPT}\n\nRespond with ONLY a single JSON object matching this shape (no markdown, no prose, no code fences):\n${SCHEMA_AS_TEXT}\n\nWEBSITE CONTENT:\n${markdown.slice(0, TOTAL_CHAR_CAP)}`
+    : `${EXTRACTION_PROMPT}\n${markdown.slice(0, TOTAL_CHAR_CAP)}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
-    const result = await model.generateContent(`${EXTRACTION_PROMPT}\n${markdown.slice(0, TOTAL_CHAR_CAP)}`);
+    const result = await model.generateContent(fullPrompt);
     const text = result.response.text();
-    return JSON.parse(text) as Doc;
+    try {
+      return extractJsonObject(text) as Doc;
+    } catch (parseErr) {
+      // Log the raw response so we can see what shape the model returned.
+      // Truncate to keep the log readable.
+      console.error(`[research] JSON parse failed for model=${modelName}. Raw response (first 1500 chars):`);
+      console.error(text.slice(0, 1500));
+      throw parseErr;
+    }
   } finally {
     clearTimeout(timer);
   }
