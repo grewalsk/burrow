@@ -456,7 +456,17 @@ const FACTS: Record<string, string[]> = {
 type Sub = "discover" | "select" | "read" | "done";
 type ReadStatus = "queued" | "reading" | "done";
 
-function Researching({ url, onDone }: { url: string; onDone: () => void }) {
+function Researching({
+  url,
+  researchReady,
+  researchMeta,
+  onDone,
+}: {
+  url: string;
+  researchReady: boolean;
+  researchMeta: { pages_crawled: number; pages_read: number; source: "gemini" | "fallback" } | null;
+  onDone: () => void;
+}) {
   const [sub, setSub] = useState<Sub>("discover");
   const [discoveredCount, setDiscoveredCount] = useState(0);
   const [selectIdx, setSelectIdx] = useState(0);
@@ -674,10 +684,14 @@ function Researching({ url, onDone }: { url: string; onDone: () => void }) {
             }}
           >
             {sub === "done"
-              ? "researcher idle · 21 pages crawled · brain seeded"
+              ? researchReady && researchMeta
+                ? `researcher idle · ${researchMeta.pages_read}/${researchMeta.pages_crawled} pages read · ${researchMeta.source === "gemini" ? "extracted" : "extraction skipped"}`
+                : researchReady
+                ? "researcher idle · 21 pages crawled · brain seeded"
+                : "extracting facts…"
               : "researcher running…"}
           </span>
-          <PrimaryBtn onClick={onDone} disabled={sub !== "done"}>
+          <PrimaryBtn onClick={onDone} disabled={sub !== "done" || !researchReady}>
             Continue to confirm →
           </PrimaryBtn>
         </div>
@@ -1021,38 +1035,48 @@ type Doc = {
   stories: Story[];
 };
 
-function ConfirmForm({ url, onSubmit }: { url: string; onSubmit: (doc: Doc) => void }) {
-  const [doc, setDoc] = useState<Doc>({
-    one_liner: "Managed retrieval for serious teams.",
-    description:
-      "Initech offers managed retrieval infrastructure for teams that have outgrown single-tenant vector DBs. We handle indexing, scoring, and re-indexing — you keep your data, we keep the cluster running.",
-    icp: "Engineering teams of 10–200 with > 50M vectors. Currently on Pinecone, Weaviate, or self-hosted Qdrant. Pain: cluster ops eating engineering time.",
-    pricing: [
-      { name: "Free", price: "$0", note: "up to 1M vectors" },
-      { name: "Team", price: "$499 / mo", note: "up to 50M vectors, shared cluster" },
-      { name: "Enterprise", price: "custom", note: "SLA, SOC2, dedicated cluster, > 200M" },
-    ],
-    features: [
-      "Managed retrieval",
-      "Auto-scoring of incoming signals",
-      "Continuous re-indexing",
-      "Eval dashboards",
-    ],
-    competitors: ["Pinecone", "Weaviate", "Qdrant Cloud", "Turbopuffer"],
-    stories: [
-      {
-        name: "Initech",
-        detail: "200M vectors, 14-person team. Migration from Pinecone, 6-week ramp.",
-        src: "/customers/initech",
-      },
-      { name: "Acme", detail: "80M vectors, fintech. Cited 40% cost reduction.", src: "/customers/acme" },
-      {
-        name: "Pied Piper",
-        detail: 'Compression-focused use case. "Replaced our internal cluster."',
-        src: "/customers/piedpiper",
-      },
-    ],
-  });
+const FALLBACK_DOC: Doc = {
+  one_liner: "Managed retrieval for serious teams.",
+  description:
+    "Initech offers managed retrieval infrastructure for teams that have outgrown single-tenant vector DBs. We handle indexing, scoring, and re-indexing — you keep your data, we keep the cluster running.",
+  icp: "Engineering teams of 10–200 with > 50M vectors. Currently on Pinecone, Weaviate, or self-hosted Qdrant. Pain: cluster ops eating engineering time.",
+  pricing: [
+    { name: "Free", price: "$0", note: "up to 1M vectors" },
+    { name: "Team", price: "$499 / mo", note: "up to 50M vectors, shared cluster" },
+    { name: "Enterprise", price: "custom", note: "SLA, SOC2, dedicated cluster, > 200M" },
+  ],
+  features: [
+    "Managed retrieval",
+    "Auto-scoring of incoming signals",
+    "Continuous re-indexing",
+    "Eval dashboards",
+  ],
+  competitors: ["Pinecone", "Weaviate", "Qdrant Cloud", "Turbopuffer"],
+  stories: [
+    {
+      name: "Initech",
+      detail: "200M vectors, 14-person team. Migration from Pinecone, 6-week ramp.",
+      src: "/customers/initech",
+    },
+    { name: "Acme", detail: "80M vectors, fintech. Cited 40% cost reduction.", src: "/customers/acme" },
+    {
+      name: "Pied Piper",
+      detail: 'Compression-focused use case. "Replaced our internal cluster."',
+      src: "/customers/piedpiper",
+    },
+  ],
+};
+
+function ConfirmForm({
+  url,
+  initialDoc,
+  onSubmit,
+}: {
+  url: string;
+  initialDoc: Doc | null;
+  onSubmit: (doc: Doc) => void;
+}) {
+  const [doc, setDoc] = useState<Doc>(initialDoc ?? FALLBACK_DOC);
 
   const setField = <K extends keyof Doc>(k: K, v: Doc[K]) =>
     setDoc((d) => ({ ...d, [k]: v }));
@@ -1496,8 +1520,53 @@ export function OnboardingFlow() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("landing");
   const [url, setUrl] = useState("initech.dev");
+  const [researchDoc, setResearchDoc] = useState<Doc | null>(null);
+  const [researchReady, setResearchReady] = useState(false);
+  const [researchMeta, setResearchMeta] = useState<{
+    pages_crawled: number;
+    pages_read: number;
+    source: "gemini" | "fallback";
+  } | null>(null);
 
-  const reset = () => setPhase("landing");
+  const reset = () => {
+    setPhase("landing");
+    setResearchDoc(null);
+    setResearchReady(false);
+    setResearchMeta(null);
+  };
+
+  const startResearch = (rawUrl: string) => {
+    setResearchReady(false);
+    setResearchDoc(null);
+    setResearchMeta(null);
+    fetch("/api/research", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: rawUrl }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.doc) {
+          setResearchDoc(data.doc as Doc);
+          setResearchMeta({
+            pages_crawled: data.pages_crawled ?? 0,
+            pages_read: data.pages_read ?? 0,
+            source: data.source ?? "fallback",
+          });
+        }
+      })
+      .catch(() => {
+        // network/server error — ConfirmForm will use its hardcoded defaults
+      })
+      .finally(() => {
+        setResearchReady(true);
+      });
+  };
+
+  const handleLandingSubmit = () => {
+    startResearch(url);
+    setPhase("researching");
+  };
 
   const ensureSessionCookie = () => {
     if (typeof document === "undefined") return;
@@ -1554,12 +1623,19 @@ export function OnboardingFlow() {
     >
       <Chrome phase={phase} onReset={reset} />
       {phase === "landing" && (
-        <Landing url={url} setUrl={setUrl} onSubmit={() => setPhase("researching")} />
+        <Landing url={url} setUrl={setUrl} onSubmit={handleLandingSubmit} />
       )}
       {phase === "researching" && (
-        <Researching url={url} onDone={() => setPhase("form")} />
+        <Researching
+          url={url}
+          researchReady={researchReady}
+          researchMeta={researchMeta}
+          onDone={() => setPhase("form")}
+        />
       )}
-      {phase === "form" && <ConfirmForm url={url} onSubmit={finish} />}
+      {phase === "form" && (
+        <ConfirmForm url={url} initialDoc={researchDoc} onSubmit={finish} />
+      )}
     </div>
   );
 }

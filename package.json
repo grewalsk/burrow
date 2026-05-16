@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@radix-ui/react-select": "^2.2.6",
     "busboy": "^1.6.0",
     "file-type": "^18.7.0",
