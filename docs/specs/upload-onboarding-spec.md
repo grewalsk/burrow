@@ -260,22 +260,22 @@ After completing the upload from within the dashboard, the user returns to `#bri
 │           │           └── 1px per-file upload progress bar          │
 │           └── <MinimalCorpusTracker>                                │
 │                                                                     │
-│  /app/api/upload/route.ts  (POST — synchronous pipeline)            │
-│      auth check → MIME validate → extract text → chunk              │
-│      → ingest all chunks (Promise.all, p-limit 5) → return done     │
+│  /app/api/upload/route.ts  (POST — server-side blocking pipeline)    │
+│      auth check → MIME validate → base64 encode                     │
+│      → ze.documents.add() → poll get_info until indexed             │
+│      → return { status: "done" } or { status: "timeout" }           │
 │                                                                     │
 │  /app/api/onboarding/brain/route.ts  (POST — cr_agent auto-ingest)  │
 │      receives cr_agent form data → ingests brand_guide +            │
 │      competitor_intel docs into ZeroEntropy                         │
 │                                                                     │
-│  /lib/extractText.ts    — pdf-parse + mammoth wrappers              │
-│  /lib/chunkText.ts      — sliding-window chunker                    │
 │  /lib/classifyDocType.ts — keyword/regex → DocType | null          │
-│  /lib/zeroentropyClient.ts — ingest wrapper, 3× exponential retry  │
+│  /lib/sampleCorpus.ts    — pre-chunked sample docs (metadata.sample: "true") │
+│  /lib/zeroentropyClient.ts — SDK wrapper (import { ZeroEntropy })   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key architectural decision:** ZeroEntropy ingest is synchronous per chunk. The whole pipeline for a 10-page PDF takes ~2–5s. Therefore: **no polling, no job store.** The POST handler blocks until all chunks are ingested and returns `{ status: "done" | "error" }` directly. This eliminates the multi-instance polling problem entirely.
+**Key architectural decision:** ZeroEntropy indexing is async — `ze.documents.add()` enqueues the document; the SDK returns before indexing is complete. The POST handler bridges this by polling `ze.documents.get_info()` server-side until `index_status === "indexed"`, with a 45-second cap. If the cap is exceeded, the route returns `{ status: "timeout" }` and the client shows a "Still indexing…" state. This keeps the frontend simple (no client-side status polling) while correctly handling ZE's async model. **No job store needed** — the server-side poll is stateless and completes within the single HTTP response.
 
 ### Client-side
 
@@ -283,7 +283,8 @@ After completing the upload from within the dashboard, the user returns to `#bri
 2. User reviews/overrides doc_types, clicks "Process and continue"
 3. For each file (in parallel, capped at 3 concurrent uploads): POST to `/api/upload` with `FormData` containing file + `doc_type`
 4. Upload progress tracked via XHR `onprogress` — drives the 1px per-file progress bar
-5. On server response `{ status: "done" }`: row transitions to "Indexed" state immediately. No polling.
+5. On server response `{ status: "done" }`: row transitions to "Indexed" state.
+   On server response `{ status: "timeout" }`: row shows "Still indexing… · retry" (ZE indexing exceeded 45s cap).
 6. On server response `{ status: "error", message }`: row shows "Failed · retry"
 7. `MinimalCorpusTracker` updates after each row resolves to "done"
 8. Aggregate progress bar width = `completedFiles / totalFiles`
@@ -292,23 +293,17 @@ After completing the upload from within the dashboard, the user returns to `#bri
 
 ```ts
 // app/api/upload/route.ts — required header
-export const runtime = 'nodejs';  // required for pdf-parse, mammoth, busboy
+export const runtime = 'nodejs';  // required for busboy
 // Do NOT add `export const config = { api: { bodyParser: false } }` — that is Pages Router syntax only
-```
-
-```js
-// next.config.mjs — required for pdf-parse and mammoth webpack bundling
-export default {
-  // ...existing config
-  serverExternalPackages: ['pdf-parse', 'mammoth'],  // prevents webpack from bundling these Node-only modules
-};
 ```
 
 ```bash
 # npm install (pin file-type to v18 — v19+ is ESM-only, incompatible with CJS Next.js)
-npm install pdf-parse mammoth file-type@18 busboy p-limit
-npm install --save-dev @types/pdf-parse @types/busboy
+npm install zeroentropy file-type@18 busboy
+npm install --save-dev @types/busboy
 ```
+
+**Vercel tier requirement:** The 45s server-side polling cap requires **Vercel pro tier** (60s serverless function timeout). Hobby tier kills at 10s — the route 504s before the cap is reached. Set `maxDuration = 60` in `next.config.mjs` or Vercel project settings. Client-side: treat any 504 response as `{ status: "timeout" }` to avoid unhandled rejection.
 
 **Use `busboy` for multipart parsing** (not `formidable` — formidable requires Node.js `IncomingMessage`, not the Web `Request` object used by App Router). Pattern:
 
@@ -341,31 +336,52 @@ Runtime: nodejs (see next.config.mjs note above)
 4. **Size validation** — reject if file > 10 MB → 400 "Over 10 MB limit"
 5. **Session batch enforcement** — check session-scoped counter (use `headers().get('x-session-id')` or auth token as key, stored in a module-level Map): reject if session total > 50 MB or > 20 files → 400 "Upload limit reached"
 6. **Auto-classify** (if `doc_type` not provided or `null`): call `classifyDocType(filename, firstTokens)` — see below
-7. **Extract text:**
-   - `.txt` / `.md` / `.csv`: `buffer.toString('utf-8')`
-   - `.pdf`: `const { text } = await pdfParse(buffer)`
-   - `.docx` / `.doc`: `const { value } = await mammoth.extractRawText({ buffer })`
-   - On extraction failure → return `{ status: "error", message: "Could not read file" }`
-8. **Chunk:** sliding window, 512 tokens, 64-token overlap. Token count via whitespace split (good enough for a hackathon).
-9. **Ingest chunks:** `Promise.all` with `p-limit(5)` concurrency cap. Each chunk call:
+7. **Base64 encode** the file buffer: `const b64 = buffer.toString('base64')`
+8. **Ingest document** via ZeroEntropy SDK — no local text extraction or chunking; ZE handles this server-side:
    ```ts
-   zeroentropyClient.ingest({
-     content: chunk.text,
+   import { ZeroEntropy } from 'zeroentropy';
+   const ze = new ZeroEntropy({ apiKey: process.env.ZEROENTROPY_API_KEY });
+
+   const docId = sha256(b64);  // deterministic doc_id — idempotent on retry
+
+   await ze.documents.add({
+     collection_name: `brain-${workspaceId}`,
+     document_path: docId,
+     content: { type: 'auto', base64_data: b64 },
      metadata: {
        doc_type,
        filename,
-       chunk_id: sha256(`${filename}-${chunkIndex}`),  // idempotent key
-       chunk_index: chunkIndex,
-       total_chunks: chunks.length,
-       uploaded_at: Date.now(),
-       sample: false,
+       uploaded_at: String(Date.now()),
+       sample: 'false',  // metadata values must be string | string[]
      },
-     collection: "brain",
-   })
+   });
    ```
-   - `chunk_id` is a sha256 hash — ZeroEntropy should upsert on this key, preventing duplicate chunks on retry
-10. On all chunks done → return `{ status: "done" }`
-11. On any chunk failure after 3 retries → return `{ status: "error", message: "Indexing failed" }`
+   - `document_path` acts as the upsert key — same `docId` on retry replaces rather than duplicates
+   - `content.type: "auto"` — ZeroEntropy parses PDFs, DOCX, MD, TXT, CSV server-side. No local extraction needed.
+9. **Poll for indexed status** — ZE indexing is async; poll until ready or timeout:
+   ```ts
+   const START = Date.now();
+   const TIMEOUT_MS = 45_000;
+   const POLL_INTERVAL_MS = 1_000;
+
+   while (Date.now() - START < TIMEOUT_MS) {
+     const info = await ze.documents.get_info({
+       collection_name: `brain-${workspaceId}`,
+       document_path: docId,
+     });
+     if (info.index_status === 'indexed') break;
+     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+   }
+
+   const final = await ze.documents.get_info({ collection_name: `brain-${workspaceId}`, document_path: docId });
+   if (final.index_status !== 'indexed') {
+     return Response.json({ status: 'timeout' }, { status: 202 });
+   }
+   ```
+10. On indexed → return `{ status: "done" }`
+11. On SDK error after internal retry → return `{ status: "error", message: "Indexing failed" }`
+
+**Performance note:** With up to 5 concurrent uploads, you may have 5 simultaneous server-side polling loops. For a hackathon demo with small documents this is acceptable; at scale, move to client-side polling (post-MVP).
 
 ### cr_agent auto-ingest (`/api/onboarding/brain`)
 
@@ -408,84 +424,119 @@ export function classifyDocType(filename: string, firstTokens: string): DocType 
 
 ### ZeroEntropy integration
 
+**Package:** `npm install zeroentropy` — use the official SDK, not a custom fetch wrapper.
+
 **Environment variables (add all to `.env.local` and `.env.example`):**
 
 ```bash
 # .env.example
-ZEROENTRROPY_API_KEY=your_key_here           # ZeroEntropy API key
-ZEROENTRROPY_BASE_URL=https://api.zeroentrropy.com  # base URL (confirm with ZE docs)
-ZERO_ENTROPY_MOCK=false                      # set to "true" to use in-memory mock
+ZEROENTROPY_API_KEY=your_key_here   # ZeroEntropy API key (single R in "Entropy")
+ZERO_ENTROPY_MOCK=false             # set to "true" to use in-memory mock for local dev
 ```
 
-**`zeroentropyClient.ts` stub (implement this first; swap real client in when ZE API is confirmed):**
+**`zeroentropyClient.ts` — SDK-based wrapper:**
 
 ```ts
-const BASE_URL = process.env.ZEROENTRROPY_BASE_URL ?? 'https://api.zeroentrropy.com';
-const API_KEY = process.env.ZEROENTRROPY_API_KEY ?? '';
+import { ZeroEntropy } from 'zeroentropy';
+
 const IS_MOCK = process.env.ZERO_ENTROPY_MOCK === 'true';
 
 // In-memory mock store for local dev and test #4 (upload → retrieval smoke test)
-const mockStore: Array<{ content: string; metadata: Record<string, unknown> }> = [];
+type MockDoc = { path: string; content: string; metadata: Record<string, string | string[]>; indexed: boolean };
+const mockStore: MockDoc[] = [];
 
-export async function ingest(params: {
-  content: string;
-  metadata: Record<string, unknown>;
-  collection: string;
-}) {
-  if (IS_MOCK) {
-    mockStore.push(params);
-    return { id: crypto.randomUUID() };
-  }
-  // Real ZeroEntropy — verify these fields against actual API docs
-  const res = await fetch(`${BASE_URL}/collections/${params.collection}/ingest`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content: params.content, metadata: params.metadata }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`ZeroEntropy ingest failed: ${res.status} ${JSON.stringify(err)}`);
-  }
-  return res.json();
+export function getClient() {
+  if (IS_MOCK) return null;
+  return new ZeroEntropy({ apiKey: process.env.ZEROENTROPY_API_KEY ?? '' });
 }
 
-export async function deleteWhere(params: {
-  collection: string;
-  filter: Record<string, unknown>;
+export async function ensureCollection(collectionName: string) {
+  if (IS_MOCK) return;
+  const ze = getClient()!;
+  try {
+    await ze.collections.add({ collection_name: collectionName });
+  } catch (e: unknown) {
+    // 409 ConflictError means it already exists — that's fine
+    if (!(e instanceof Error && e.message.includes('409'))) throw e;
+  }
+}
+
+export async function addDocument(params: {
+  collectionName: string;
+  documentPath: string;
+  base64Data: string;
+  metadata: Record<string, string | string[]>;
 }) {
   if (IS_MOCK) {
-    // purge sample docs from mockStore
+    const existing = mockStore.findIndex(d => d.path === params.documentPath);
+    const doc: MockDoc = {
+      path: params.documentPath,
+      content: params.base64Data,
+      metadata: params.metadata,
+      indexed: false,
+    };
+    if (existing >= 0) mockStore[existing] = doc;
+    else mockStore.push(doc);
+    // Simulate async indexing — mark indexed after 100ms
+    setTimeout(() => { const d = mockStore.find(d => d.path === params.documentPath); if (d) d.indexed = true; }, 100);
+    return;
+  }
+  const ze = getClient()!;
+  await ze.documents.add({
+    collection_name: params.collectionName,
+    document_path: params.documentPath,
+    content: { type: 'auto', base64_data: params.base64Data },
+    metadata: params.metadata,
+  });
+}
+
+export async function getDocumentInfo(collectionName: string, documentPath: string) {
+  if (IS_MOCK) {
+    const doc = mockStore.find(d => d.path === documentPath);
+    return { index_status: doc?.indexed ? 'indexed' : 'pending' };
+  }
+  const ze = getClient()!;
+  return ze.documents.get_info({ collection_name: collectionName, document_path: documentPath });
+}
+
+export async function deleteByMetadata(collectionName: string, filter: Record<string, string>) {
+  if (IS_MOCK) {
     const before = mockStore.length;
     mockStore.splice(0, mockStore.length,
-      ...mockStore.filter(d => !Object.entries(params.filter).every(([k, v]) => d.metadata[k] === v))
+      ...mockStore.filter(d => !Object.entries(filter).every(([k, v]) => d.metadata[k] === v))
     );
     return { deleted: before - mockStore.length };
   }
-  // Real ZeroEntropy delete endpoint — confirm path with ZE docs
-  const res = await fetch(`${BASE_URL}/collections/${params.collection}/delete`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filter: params.filter }),
+  const ze = getClient()!;
+  // Delete all documents matching filter — iterate and delete individually
+  // (ZE SDK does not have a bulk-delete-by-metadata endpoint in v1)
+  const results = await ze.queries.top_documents({
+    collection_name: collectionName,
+    query: '',
+    count: 1000,
   });
-  if (!res.ok) throw new Error(`ZeroEntropy delete failed: ${res.status}`);
-  return res.json();
+  const toDelete = results.documents.filter(doc =>
+    Object.entries(filter).every(([k, v]) => doc.metadata?.[k] === v)
+  );
+  await Promise.all(toDelete.map(doc =>
+    ze.documents.delete({ collection_name: collectionName, document_path: doc.document_path })
+  ));
+  return { deleted: toDelete.length };
 }
 
 // For test #4: retrieve from mock store
-export function mockSearch(query: string, collection: string) {
+export function mockSearch(collectionName: string) {
   if (!IS_MOCK) throw new Error('mockSearch only available in mock mode');
-  return mockStore.filter(d => d.metadata.collection === collection || true)
+  return mockStore
+    .filter(d => d.indexed)
     .slice(0, 3)
-    .map((d, i) => ({ content: d.content, metadata: d.metadata, score: 0.9 - i * 0.1 }));
+    .map((d, i) => ({ document_path: d.path, metadata: d.metadata, score: 0.9 - i * 0.1 }));
 }
 ```
 
-**`ZEROENTRROPY_API_KEY` — note the spelling** (double-R in "Entrropy" — match ZeroEntropy's actual env var name from their docs. The spec uses this spelling consistently; do not add a second variant).
+**Note on metadata types:** All metadata values must be `string | string[]`. Cast booleans: `sample: 'false'` not `sample: false`. Cast numbers: `uploaded_at: String(Date.now())`.
 
-**Risk:** If ZeroEntropy's actual API contract differs (different endpoint paths, different auth header, no upsert support), the client needs adjustment. The mock mode (`ZERO_ENTROPY_MOCK=true`) is the default for local dev and for test #4 — the mock store is queryable via `mockSearch`, making end-to-end retrieval tests possible without a real ZE account.
+**Note on env var spelling:** `ZEROENTROPY_API_KEY` — one R in "Entropy". The previous spec version had a typo (`ZEROENTRROPY_API_KEY`) — use the correct single-R spelling consistently.
 
 ### Sample corpus
 
@@ -505,8 +556,11 @@ export function mockSearch(query: string, collection: string) {
 | Format not supported (MIME mismatch) | Magic bytes don't match extension | Server returns 400. Row shows "Failed · unsupported format". |
 | File too large | File > 10 MB | Inline message: "filename.pdf — over 10 MB limit" |
 | Batch limit reached | Session total > 50 MB or 20 files | Dropzone disabled: 60% opacity, "Upload limit reached". Server also enforces: 400 if bypassed. |
-| Text extraction failed | `pdf-parse` or `mammoth` throws | Row shows "Failed · retry" |
-| ZeroEntropy unavailable | Ingest call times out or 5xx after 3 retries | Row shows "Failed · retry". Retry re-runs extraction + ingest. Retry is idempotent (sha256 chunk_id prevents duplicates). |
+| ZeroEntropy ingest rejected | ZE returns 4xx synchronously on `documents.add()` | Row shows "Failed · retry". Retry re-sends same base64 payload (idempotent via `document_path`). |
+| ZeroEntropy parse failure | ZE enqueues the doc but cannot parse it (e.g. corrupted PDF, unsupported DOCX variant) — `index_status` never reaches `"indexed"` | **Manifests as timeout** (indistinguishable from slow indexing). Row shows "Still indexing… · retry". Retry will not help. Advise reformatting the file. Post-MVP: check ZE document status for an explicit `"failed"` value and surface a cleaner error. |
+| ZeroEntropy indexing timeout | 45s cap exceeded before `index_status === "indexed"` | Server returns `{ status: "timeout" }`. Row shows "Still indexing… · retry". Retry polls again from current state. |
+| Vercel 504 (hobby tier timeout) | Route exceeds Vercel's 10s hobby-tier limit before polling completes | Client receives a 504. **Treat 504 as `{ status: "timeout" }` client-side.** Spec requires Vercel pro tier (60s timeout) for the 45s cap to be meaningful. |
+| ZeroEntropy unavailable | Ingest call times out or 5xx after SDK internal retry | Row shows "Failed · retry". |
 | Auth missing | No session on `/api/upload` | 401 — client shows "Session expired. Refresh the page." |
 | No doc_type selected | User clicks Process with null doc_types | Inline note under action row: "Select a type for each file." (12px `--text-secondary`). Button is NOT disabled — this is advisory. |
 | cr_agent auto-ingest fails | `/api/onboarding/brain` returns error | Navigation to Frame 3.5 proceeds regardless. Founder can upload brand/competitor docs manually. |
@@ -540,16 +594,15 @@ After successful upload:
     MinimalCorpusTracker.tsx — P1 coverage pills
 /app/api
   /upload
-    route.ts               — POST handler: validate → extract → chunk → ingest (synchronous, returns done)
+    route.ts               — POST handler: validate → base64 → ze.documents.add() → poll until indexed → return done/timeout
   /onboarding
     /brain
       route.ts             — POST handler: cr_agent auto-ingest (brand_guide + competitor_intel)
 
 /lib
-  extractText.ts           — pdf-parse + mammoth wrappers
-  chunkText.ts             — sliding-window chunker, sha256 chunk_id
   classifyDocType.ts       — keyword/regex rules → DocType | null
-  zeroentropyClient.ts     — ZeroEntropy ingest/delete wrapper + mock mode
+  sampleCorpus.ts          — pre-built sample docs ingested on skip (metadata.sample: "true")
+  zeroentropyClient.ts     — ZE SDK wrapper: addDocument, getDocumentInfo, deleteByMetadata, mockSearch
 ```
 
 ---
@@ -623,7 +676,7 @@ After upload, the spec must be tested end-to-end: upload one `won_deal` doc, fet
 ### Changes from initial spec
 1. **Auto-classify doc_type:** Server infers `doc_type` from filename + first 200 tokens; shows pre-filled selector for override. Manual assignment is override, not default.
 2. **Show only 4 MVC doc_types in onboarding:** `won_deal`, `lost_deal`, `brand_guide`, `icp`. P2/P3 types hidden behind "Add more types →" link after initial upload.
-3. **Job state in localStorage, not server memory:** `uploadJobs: Record<jobId, UploadJobState>` stored in `localStorage.burrow.uploadJobs`. The poll endpoint becomes stateless — it forwards to ZeroEntropy's job status or derives state from a persistent layer.
+3. **No job store, no client-side polling:** The POST handler blocks server-side until ZE indexing completes (or 45s timeout). No `/api/upload/status` endpoint needed. Upload state is tracked locally in React state only.
 4. **Skip path with sample corpus fallback:** If founder skips, the system auto-loads a sample corpus from `/lib/sampleCorpus.ts` (fictional but plausible data) so the dashboard never shows 0%. The sample corpus is tagged `metadata.sample = true` and shown with a subtle "(sample)" label in the Evidence region.
 
 ---
@@ -650,11 +703,11 @@ After upload, the spec must be tested end-to-end: upload one `won_deal` doc, fet
 | 16 | Design | "Indexing…" is static text, no animation | Mechanical | P5 (explicit) | Animated ellipsis violates brief's prohibition on looping animations | — |
 | 17 | Design | Disabled button: opacity 0.5 + pointer-events none | Mechanical | P5 (explicit) | "80% opacity, not grayed-out" was contradictory | Vague 80% spec |
 | 18 | Design | Aggregate 1px progress bar above file list | Mechanical | P5 (simpler) | Multi-file processing needs a total progress signal; single bar is brief-compliant | No aggregate bar |
-| 19 | Eng | Synchronous pipeline — no polling, no job store | Mechanical | P5 (simpler) | ZeroEntropy ingest is synchronous; polling adds multi-instance complexity for no benefit | Async + polling |
+| 19 | Eng | Server-side blocking poll — no job store, no client-side polling | Mechanical | P5 (simpler) | ZE indexing is async; server polls get_info() with 45s cap, returns done/timeout. Frontend stays simple. | Client-side polling with status endpoint |
 | 20 | Eng | MIME magic bytes validation via `file-type` | Mechanical | P1 (completeness) | Extension-only validation allows MIME spoofing attacks | Extension check |
 | 21 | Eng | Auth check on both upload routes | Mechanical | P1 (completeness) | Unauthenticated uploads expose ZeroEntropy to abuse | No auth spec |
-| 22 | Eng | `bodyParser: false` + formidable for multipart | Mechanical | P5 (explicit) | Default 4 MB bodyParser silently kills files > 4 MB before validation | Default bodyParser |
-| 23 | Eng | sha256 chunk_id for idempotent ingest | Mechanical | P5 (explicit) | Retry without idempotency creates duplicate chunks in ZeroEntropy | No dedup |
+| 22 | Eng | `runtime = 'nodejs'` + busboy for multipart | Mechanical | P5 (explicit) | formidable requires Node IncomingMessage, incompatible with App Router Web Request | formidable |
+| 23 | Eng | sha256(base64) as document_path for idempotent ingest | Mechanical | P5 (explicit) | Same file on retry uses same document_path; ZE upserts rather than duplicates | Random UUID per upload |
 | 24 | Eng | Promise.all with p-limit(5) for chunk ingest | Mechanical | P1 (completeness) | Serial N+1 ingest is slow; parallel with cap is safe and fast | Serial loop |
 | 25 | Eng | Extract OnboardingChrome to shared component | Mechanical | P5 (explicit) | Private Chrome component will be duplicated without extraction | Duplication |
 | 26 | Eng | Session-scoped batch enforcement server-side | Mechanical | P1 (completeness) | Client-only batch limit can be bypassed via direct API POST | Client-only |
@@ -662,10 +715,33 @@ After upload, the spec must be tested end-to-end: upload one `won_deal` doc, fet
 | 28 | Eng | jobId ownership validation in status endpoint | Mechanical | P1 (completeness) | UUID jobIds without ownership check are enumerable | No ownership |
 | 29 | Eng | sample corpus purge on first real ingest | Mechanical | P5 (explicit) | Sample data mixes with real results unless explicitly purged | Permanent sample |
 | 30 | Eng | cr_agent failure non-blocking for navigation | Mechanical | P6 (bias to action) | cr_agent ingest failure should not block the founder from Frame 3.5 | Block on error |
-| 31 | DX | zeroentropyClient.ts concrete stub added | Mechanical | P1 (completeness) | "Verify before starting" is a blocker; mock mode enables test #4 without real ZE | Abstract placeholder |
+| 31 | DX | zeroentropyClient.ts SDK wrapper added | Mechanical | P1 (completeness) | Concrete stub with mock mode enables test #4 without real ZE account; uses official SDK | Custom fetch stub |
 | 32 | DX | App Router multipart: busboy + runtime=nodejs | Mechanical | P5 (explicit) | formidable + Pages Router config silently fails in App Router | formidable |
-| 33 | DX | Remove dead /api/upload/status from file map | Mechanical | P5 (explicit) | Dead code contradicts Decision 19 (synchronous pipeline); engineer will implement it | Keep dead route |
-| 34 | DX | serverExternalPackages for pdf-parse + mammoth | Mechanical | P5 (explicit) | Without this, webpack bundles these modules and they fail at runtime | No config note |
+| 33 | DX | No /api/upload/status route — server-side poll handles it | Mechanical | P5 (explicit) | Client-side polling requires a status endpoint; server-side poll eliminates that need | Status endpoint + client polling |
+| 34 | DX | No serverExternalPackages needed (pdf-parse + mammoth removed) | Mechanical | P5 (simpler) | ZE content.type:"auto" handles parsing server-side; no native Node modules to externalize | serverExternalPackages config |
 | 35 | DX | Pin file-type@18 (v19+ ESM-only) | Mechanical | P5 (explicit) | v19+ breaks CJS Next.js default config | Latest version |
 | 36 | DX | .env.example block added to spec | Mechanical | P1 (completeness) | Env vars scattered in prose; engineer creates inconsistent naming | Prose-only |
 | 37 | DX | ZERO_ENTROPY_MOCK=true enables test #4 end-to-end | Mechanical | P1 (completeness) | Without mock mode, critical smoke test requires a real ZE account | No mock |
+| 38 | Eng (gap resolution) | Official zeroentropy npm SDK instead of custom fetch client | Mechanical | P1 (completeness) | SDK has correct API contract; custom fetch had unverified endpoint paths and auth headers | Custom zeroentropyClient.ts with raw fetch() |
+| 39 | Eng (gap resolution) | ZE content.type:"auto" instead of pdf-parse + mammoth | Mechanical | P5 (simpler) | ZE parses server-side; local extraction adds two native modules, extraction bugs, and webpack config | pdf-parse + mammoth + extractText.ts |
+| 40 | Eng (gap resolution) | Server-side blocking poll (45s cap) for async ZE indexing | Mechanical | P5 (simpler) | ZE indexing is async; server polls get_info() until indexed before returning. Frontend stays simple. | Client-side polling with /api/upload/status route |
+| 41 | Eng (gap resolution) | ZE parse failure manifests as timeout — documented, not fixed | Mechanical | P3 (pragmatic) | No explicit "failed" status in ZE's v1 API; document the known gap, defer better UX to post-MVP | Surface parse error separately |
+| 42 | Eng (gap resolution) | Requires Vercel pro tier (60s timeout); treat 504 as timeout client-side | Mechanical | P1 (completeness) | 45s cap exceeds hobby tier 10s limit; 504 must be handled client-side or it becomes an unhandled rejection | Hobby tier / reduce cap to 8s |
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 3 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**OUTSIDE VOICE:** Claude subagent. Found 2 real issues (ZE parse failure invisible behind timeout; 45s cap requires Vercel pro). Both accepted and applied to spec. One non-issue (SDK edge runtime concern — moot, `runtime = 'nodejs'` already set).
+
+**UNRESOLVED:** 0 decisions left unresolved.
+
+**VERDICT:** ENG CLEARED — all three gaps resolved (D38: official SDK, D39: ZE auto-parse, D40: server-side blocking poll). Two outside-voice findings incorporated (D41, D42). Ready to implement.
