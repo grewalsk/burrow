@@ -12,9 +12,11 @@
 
 The Lead Card modal's Evidence region cites retrievals like `won_deal · Initech`, `brand_guide · ICP definition`, and `lost_deal · Acme`. These citations are what make Burrow's pitch land — they prove the drafts are grounded, not hallucinated.
 
-Right now the Brain (ZeroEntropy) has no corpus. There is no way for a founder to seed it. The retriever returns nothing on a fresh account, so every Lead Card shows empty Evidence, the "Grounded %" top strip counter reads 0%, and the core value proposition is broken.
+The cr_agent (Frame 2) already seeds the Brain from the public website: after crawling, the status bar reads "researcher idle · 21 pages crawled · brain seeded." This gives the Brain public-facing facts — what the company does, pricing, features, competitor mentions, and customer success stories from the website.
 
-Document upload during onboarding is the fix. It turns a hollow demo into a grounded tool in under 5 minutes.
+But the most valuable retrieval evidence is *private* — email threads from closed deals, call transcripts, internal win/loss notes, brand voice guides that live in docs not on the website. The website crawl cannot reach these. The Lead Card Evidence region's most compelling citations (`won_deal · Initech`, `lost_deal · Acme`) come from this private layer.
+
+Document upload during onboarding (Frame 3.5) fills the private layer. It supplements the cr_agent's public-web seeding with the founder's own history.
 
 ---
 
@@ -367,19 +369,20 @@ Runtime: nodejs (see next.config.mjs note above)
 
 ### cr_agent auto-ingest (`/api/onboarding/brain`)
 
-Called from `ConfirmForm.onSubmit` in `OnboardingFlow.tsx` **before** `router.push('/onboarding/upload')`.
+This is the implementation of what Frame 2 already promises ("brain seeded" in the status bar). Called from `ConfirmForm.onSubmit` in `OnboardingFlow.tsx` **before** `router.push('/onboarding/upload')`. The form data (Burrow2) is already structured — the route just formats and ingests it.
 
 ```
 Route: POST /api/onboarding/brain
-Body: { one_liner, description, icp, pricing, features, competitors: string[], stories }
+Body: { one_liner, description, icp, pricing, features: string[], competitors: string[], stories: Array<{name, description, source}> }
 ```
 
 1. Auth check (same as upload)
-2. Format `brand_guide` document: combine `one_liner + description + features + pricing + stories` into a single text block
-3. Ingest as ZeroEntropy document: `{ content: brandGuideText, metadata: { doc_type: "brand_guide", filename: "auto-company-profile", sample: false }, collection: "brain" }`
-4. For each competitor in `competitors[]`: ingest as `{ doc_type: "competitor_intel", filename: `auto-competitor-${i}` }`
-5. On success: respond `{ ok: true }` → client navigates to `/onboarding/upload`
-6. On failure: respond `{ ok: false }` — **do not block navigation**. The upload step still proceeds; the founder can upload brand/competitor docs manually.
+2. **brand_guide doc**: combine `one_liner + "\n\n" + description + "\n\nFeatures: " + features.join(", ") + "\n\nPricing: " + pricing` into a single text block. Ingest: `{ doc_type: "brand_guide", filename: "auto-company-profile", sample: false }`
+3. **icp doc**: ingest `icp` text as `{ doc_type: "icp", filename: "auto-icp", sample: false }`
+4. **competitor_intel docs**: for each competitor in `competitors[]`, ingest as `{ doc_type: "competitor_intel", filename: "auto-competitor-${i}", sample: false }`
+5. **case_study docs**: for each story in `stories[]` (Initech, Acme, Pied Piper etc.), ingest `"${story.name}: ${story.description}"` as `{ doc_type: "case_study", filename: "auto-story-${story.name}", sample: false }` — **these are the most valuable public retrievals** since they map directly to the "matches: Initech win" pattern shown in the dashboard signals
+6. On success: respond `{ ok: true }` → client navigates to `/onboarding/upload`
+7. On failure: respond `{ ok: false }` — **do not block navigation**. The upload step still proceeds; the founder can upload manually.
 
 ### `classifyDocType.ts` — keyword/regex rules
 
@@ -609,9 +612,9 @@ After completion: `router.push('/signals')` and set `localStorage.burrow.brainSe
 After upload, the spec must be tested end-to-end: upload one `won_deal` doc, fetch one signal, verify the Analyst returns a retrieval from that doc in the Lead Card modal's Evidence region. If the retrieval doesn't appear, the upload pipeline ships but the demo is still hollow.
 
 ### Dream state delta
-- **Today:** Empty corpus → 0% Grounded → hollow Lead Card
-- **This plan:** cr_agent auto-seeds `brand_guide` + `competitor_intel` on signup; founder uploads `won_deal` + `lost_deal` in Frame 3.5 → Evidence region shows real citations
-- **12-month ideal:** Every approved draft auto-indexes; every rejected draft auto-indexes; corpus grows automatically; upload is only needed for historical data
+- **After Frame 2 (cr_agent):** Brain seeded with public-web data (brand_guide, icp, competitor_intel, case_study from website). Grounded % is partial — publicly sourced only.
+- **After Frame 3.5 (upload):** Brain supplemented with private data (won_deal, lost_deal, call_transcript). Evidence region shows citations from both public and private docs. Grounded % rises to 99% as shown in the dashboard screenshot.
+- **12-month ideal:** Every approved draft auto-indexes as a won_deal signal; every rejected draft auto-indexes as a lost_deal signal; corpus grows without manual upload; upload is only needed for historical private data at signup.
 
 ---
 
