@@ -7,14 +7,13 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import {
   getDocumentContent,
   listDocuments,
-  topDocuments,
 } from "./zeroentropyClient";
 import { extractJsonObject } from "./researchClient";
 
 const GEMINI_TIMEOUT_MS = 20_000;
-const MAX_GROUNDING_DOCS = 4;
+const MAX_GROUNDING_DOCS = 12;        // cap on how many brand docs to send Gemma
 const MAX_GROUNDING_CHARS_PER_DOC = 1_200;
-const TOTAL_PROMPT_CAP = 12_000;
+const TOTAL_PROMPT_CAP = 16_000;
 
 const DRAFT_SCHEMA = {
   type: SchemaType.OBJECT,
@@ -128,10 +127,17 @@ WHAT TO WRITE
   quote is fine — but don't quote more than one sentence, and don't
   open with "I came across your post" or "I saw on Reddit".
 
-- In ONE sentence, name a specific past win or pattern from the
-  SUPPLEMENTARY CONTEXT or YOUR COMPANY data (customer name +
-  concrete number). If no specific wins are available, anchor on a
-  concrete ICP / brand-voice point instead.
+- READ ALL the SUPPLEMENTARY CONTEXT docs below. They include past
+  wins, lost deals, ICP detail, case studies, and competitor notes.
+  Pick the ONE that most directly maps to this specific prospect's
+  problem in the SIGNAL POST — not just the closest customer name,
+  but the win whose details (industry, scale, pain point, outcome)
+  actually mirror what the prospect is venting about.
+- In ONE sentence, cite that ONE win with a concrete number
+  (customer name + the specific metric from the doc). If genuinely
+  no win in the docs fits the situation, anchor on a concrete ICP
+  or brand-voice point instead — but the bar is "does this map to
+  THIS prospect", not "is this our most impressive win".
 
 - In ONE sentence, make the pitch — what your company does, in the
   prospect's own language from the signal post. Concrete numbers,
@@ -186,37 +192,42 @@ async function fetchWebsiteIdentity(collectionName: string): Promise<WebsiteIden
 
 async function fetchSupplementaryContext(params: {
   collectionName: string;
-  signalBody: string;
 }): Promise<{ snippets: Array<{ label: string; text: string }>; evidence: string[] }> {
-  // Everything EXCEPT the cr_agent identity doc. These supplement the
-  // sales pitch with extra past wins, voice samples, etc.
-  const candidates = await topDocuments({
+  // All brand-context docs EXCEPT the cr_agent identity doc (rendered
+  // separately as YOUR COMPANY). No rerank — Gemma reads everything and
+  // picks the most relevant evidence itself in the prompt.
+  const all = await listDocuments({
     collectionName: params.collectionName,
-    query: params.signalBody,
-    k: MAX_GROUNDING_DOCS,
     filter: {
       doc_type: { $in: ["brand_guide", "won_deal", "icp", "case_study", "competitor_intel"] },
     },
+    limit: MAX_GROUNDING_DOCS,
   });
+
+  const supplementary = all.filter(
+    (d) => String(d.metadata.is_cr_agent ?? "") !== "true",
+  );
+  if (supplementary.length === 0) return { snippets: [], evidence: [] };
 
   const snippets: Array<{ label: string; text: string }> = [];
   const evidence: string[] = [];
-
-  for (const d of candidates) {
-    // Skip the cr_agent identity doc — we render it separately.
-    if (String(d.metadata.is_cr_agent ?? "") === "true") continue;
-    const label = String(d.metadata.filename ?? d.metadata.story_name ?? d.metadata.doc_type ?? "doc");
-    evidence.push(label);
-    try {
-      const content = await getDocumentContent(params.collectionName, d.path);
-      if (content) {
-        const trimmed = content.slice(0, MAX_GROUNDING_CHARS_PER_DOC).replace(/\s+/g, " ").trim();
-        snippets.push({ label, text: trimmed });
+  await Promise.all(
+    supplementary.map(async (d) => {
+      const label = String(d.metadata.filename ?? d.metadata.story_name ?? d.metadata.doc_type ?? "doc");
+      try {
+        const content = await getDocumentContent(params.collectionName, d.path);
+        if (content && content.trim().length > 20) {
+          snippets.push({
+            label,
+            text: content.replace(/\s+/g, " ").trim().slice(0, MAX_GROUNDING_CHARS_PER_DOC),
+          });
+          evidence.push(label);
+        }
+      } catch {
+        // skip
       }
-    } catch {
-      // skip — keep going
-    }
-  }
+    }),
+  );
 
   return { snippets, evidence };
 }
@@ -227,10 +238,7 @@ export async function generateDraft(params: {
 }): Promise<GeneratedDraft> {
   const [identity, { snippets, evidence }] = await Promise.all([
     fetchWebsiteIdentity(params.collectionName),
-    fetchSupplementaryContext({
-      collectionName: params.collectionName,
-      signalBody: params.signal.body,
-    }),
+    fetchSupplementaryContext({ collectionName: params.collectionName }),
   ]);
 
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
