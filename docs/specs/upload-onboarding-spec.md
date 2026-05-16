@@ -1,0 +1,668 @@
+# Burrow — Document Upload Onboarding Spec
+
+<!-- /autoplan restore point: /Users/kaushikmedamanuri/.gstack/projects/grewalsk-burrow/spec-onboarding-upload-flow-autoplan-restore-20260516-115025.md -->
+
+**Branch:** spec/onboarding-upload-flow
+**Status:** Draft — under /autoplan review
+**Base:** docs/design_handoff_burrow/01-source-brief.md + docs/specs/burrow_flow.md
+
+---
+
+## Problem
+
+The Lead Card modal's Evidence region cites retrievals like `won_deal · Initech`, `brand_guide · ICP definition`, and `lost_deal · Acme`. These citations are what make Burrow's pitch land — they prove the drafts are grounded, not hallucinated.
+
+Right now the Brain (ZeroEntropy) has no corpus. There is no way for a founder to seed it. The retriever returns nothing on a fresh account, so every Lead Card shows empty Evidence, the "Grounded %" top strip counter reads 0%, and the core value proposition is broken.
+
+Document upload during onboarding is the fix. It turns a hollow demo into a grounded tool in under 5 minutes.
+
+---
+
+## What This Spec Covers
+
+Frame 3.5 — the document upload step inserted between the current Frame 3 (company info form confirmation) and the main dashboard.
+
+Scope:
+- The upload UI as a new onboarding phase
+- Document taxonomy (doc_types, labels, descriptions for each type)
+- File type support and size limits
+- Upload + processing pipeline (client → server action → ZeroEntropy)
+- In-progress and error states
+- Skip/defer flow
+- Post-upload dashboard reflection
+- The "seed your brain" re-entry path from within the dashboard
+
+Not in scope:
+- Bulk re-upload / corpus management (post-MVP)
+- Audio/video transcription (MP3/MP4) — deferred to post-MVP
+- URL import (paste a link, we scrape it) — deferred
+- Sharing a corpus across team members — deferred
+
+---
+
+## Document Taxonomy
+
+Each uploaded document is assigned a `doc_type` at upload time. This maps directly to what ZeroEntropy returns in the Evidence region of the Lead Card modal.
+
+| doc_type | Label in UI | Description shown to founder | Priority |
+|---|---|---|---|
+| `won_deal` | Past win | A deal you closed — call notes, email thread, or summary | P1 |
+| `lost_deal` | Past loss | A deal you lost — what happened, why | P1 |
+| `brand_guide` | Brand voice | How you write: tone, phrases to use/avoid, example copy | P1 |
+| `icp` | Ideal customer | Who you're selling to: role, company size, pain, triggers | P1 |
+| `competitor_intel` | Competitor | One competitor per doc — what they offer, where they lose | P2 |
+| `call_transcript` | Call transcript | A text transcript of a sales or discovery call | P2 |
+| `case_study` | Case study | A published or internal success story | P2 |
+| `pricing_objection` | Pricing objection | How you handle price pushback | P3 |
+| `faq` | FAQ / common objections | Objections you hear regularly and how you answer them | P3 |
+
+**Minimum viable corpus (MVC):** At least one doc from each P1 type (`won_deal`, `lost_deal`, `brand_guide`, `icp`). The UI guides toward this but does not require it to proceed.
+
+---
+
+## File Type Support
+
+Accepted: `.pdf`, `.docx`, `.doc`, `.md`, `.txt`, `.csv`
+
+Not accepted: `.mp3`, `.mp4`, `.jpg`, `.png`, `.xlsx` (show a quiet "Format not supported" inline message)
+
+Size limit: 10 MB per file. 50 MB per session upload batch. 20 files max per session.
+
+---
+
+## Frame 3.5 — Upload UI
+
+### Entry point
+
+After the founder submits the company info form (Frame 3), the Brain agent receives the structured data and stores it in ZeroEntropy. On success, instead of redirecting to `/signals`, the app routes to `/onboarding/upload`.
+
+The top-of-page chrome (the sticky header showing "frame 3 — confirm") updates to "frame 3.5 — seed your brain".
+
+### Layout
+
+Full-page layout matching the existing onboarding chrome (sticky header, centered content area, max-width 680px). No left rail. No top strip. This is pre-dashboard.
+
+**Vertical order (corrected from initial spec — dropzone first, tracker is feedback below):**
+
+```
+┌─────────────────────────────────────────────────────┐
+│ ■ Burrow    [frame 3.5 — seed your brain]  [reset]  │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  Seed your brain                       [Skip →]    │
+│  12px secondary: "Upload past wins, losses,         │
+│  brand voice, and ICP so Burrow can cite            │
+│  real evidence when scoring leads."                 │
+│                                                     │
+│  ┌─ Drop files here ───────────────────────────┐   │
+│  │  [160px tall, 24px vertical padding]        │   │
+│  │                                             │   │
+│  │  Drag files here or click to browse        │   │
+│  │  PDF, DOCX, MD, TXT, CSV · max 10 MB each  │   │
+│  │                                             │   │
+│  └─────────────────────────────────────────────┘   │
+│                                                     │
+│  [1px aggregate progress bar — appears on Process] │
+│                                                     │
+│  [Uploaded file list — see below]                  │
+│                                                     │
+│  ┌─ Coverage ──────────────────────────────────┐   │
+│  │  [pill] Past win  [pill] Past loss           │   │
+│  │  [pill] Brand voice  [pill] Ideal customer   │   │
+│  └─────────────────────────────────────────────┘   │
+│                                                     │
+│  [Skip for now →]        [Process and continue →]  │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+### Component breakdown
+
+#### `<UploadDropzone>`
+- Outer: a `1px dashed rgba(26, 24, 22, 0.16)` bordered region, 6px radius, **160px tall**, `24px` top/bottom padding, centered content
+- `role="button"` with `aria-label="Upload files. Drag and drop or press Enter to browse."`, `tabIndex={0}`
+- On `Enter` / `Space` keypress: opens native file picker (same as click)
+- **Default state:** "Drag files here or click to browse" (14px, `--text-secondary`, weight 400) + "PDF, DOCX, MD, TXT, CSV · max 10 MB each" (12px, `--text-tertiary`, weight 400)
+- **Drag-active state:** fill changes to `--bg-surface` (`#F3F2EE` light / `#1A1916` dark), border becomes solid `rgba(26, 24, 22, 0.16)`, 100ms transition on `background-color` and `border-style` only
+- **Dark mode drag-active:** fill `--bg-elevated` (`#23211D`) for sufficient contrast against `--bg-base` (`#0F0E0D`)
+- **Drop rejection (unsupported format or too large):** on drop, dropzone border flashes `--red` for 200ms (via CSS class toggle), then returns to default. Inline message appears below the dropzone (not inside).
+- **Batch limit reached (50 MB or 20 files):** dropzone becomes visually disabled — 60% opacity, `cursor: not-allowed`, `pointer-events: none`. Text changes to "Upload limit reached" (14px, `--text-secondary`).
+- On drop / file select with valid files: passes file list to parent; dropzone returns to default state immediately
+- **No animation inside the dropzone.** No pulsing border. No spinning upload icon. Static.
+
+#### `<UploadFileList>`
+- Vertical list of `<UploadFileRow>` entries (one per file)
+- Appears below the dropzone immediately on file select
+- New files added at the bottom of the list
+
+#### `<UploadFileRow>`
+- 44px tall, 16px horizontal padding, 1px bottom border `--border-subtle`
+- Left: file icon (Lucide `file-text`, 16px, `--text-tertiary`) + filename (14px `--text-primary`, truncated with ellipsis at 200px) + file size (12px `--text-tertiary`)
+- Right: `<DocTypeSelector>` + remove button (Lucide `x`, 16px, `--text-tertiary`)
+- States: idle → uploading → processing → done | error
+
+**Processing state progression:**
+1. **Idle** — just added, not yet submitted. DocTypeSelector shows "Select type" placeholder.
+2. **Uploading** — 1px progress bar under the row (full width, `--ink` fill, animates left→right based on actual upload progress via XHR/fetch with `onprogress`)
+3. **Processing** — upload complete, server is extracting + embedding. Shows "Indexing…" in 12px `--text-secondary` on the right in place of the remove button.
+4. **Done** — "Indexed" in 12px `--text-secondary`, check icon (Lucide `check`, 16px, `--green`) on right. No animation beyond the text swap.
+5. **Error** — "Failed" in 12px `--red`, with a retry link "retry" (13px `--ink`) next to it.
+
+#### `<DocTypeSelector>`
+- **Component: Radix UI `<Select>` (unstyled primitive, not native `<select>`)** — required for cross-browser styling control
+- Trigger: 28px tall, 13px weight 500, `background: #FFFFFF` (`--bg-elevated`), `border: 1px solid rgba(26, 24, 22, 0.16)` (`--border-default`), 4px radius, `padding: 0 8px`
+- Placeholder: "Select type" (12px, `--text-tertiary` = `#B5B1A8`)
+- **In onboarding (Frame 3.5): shows only 4 MVC doc_types** — `won_deal` (Past win), `lost_deal` (Past loss), `brand_guide` (Brand voice), `icp` (Ideal customer). No P2/P3 types during onboarding.
+- **In re-entry from dashboard:** shows all 9 doc_types, P2/P3 separated by a 1px `--border-subtle` Radix separator
+- Selected state: label text in 13px `--text-primary` weight 500
+- **Auto-classification (default):** server pre-classifies based on filename + first 200 tokens; selector shows the pre-filled value. User can change. If auto-classification returns `null` (uncertain), selector shows placeholder.
+- Focus: `outline: 2px solid --ink, outline-offset: 2px`
+- **The selector is not required before submit.** The "Process and continue" button shows an inline note below the action row: "Select a type for each file." (12px `--text-secondary`) if any row has null `docType`. The button is not disabled — the note is informational.
+
+#### `<MinimalCorpusTracker>`
+- A small horizontal row of 4 pill indicators (renamed from "Minimum viable corpus" in the layout — label: "Coverage" in 11px uppercase `--text-secondary` above the row, per the brief's region label convention)
+- Sits **below the file list**, above the action row
+- Four pills: Past win, Past loss, Brand voice, Ideal customer
+- Each pill: 24px tall, `fit-content` width, `min-width: 80px`, 999px radius, `horizontal padding: 10px 12px`
+- `aria-label` on each pill: e.g. `aria-label="Past win: not yet uploaded"` (updated on state change)
+- **Default state (not added):** `background: rgba(26, 24, 22, 0.06)`, `color: #87837B` (`--text-secondary`), weight 400, 12px. Border: none.
+- **File added but not yet indexed:** `border: 1px solid rgba(26, 24, 22, 0.16)` (`--border-default`), background unchanged, text unchanged
+- **Indexed successfully:** `background: rgba(45, 125, 95, 0.10)` (`--green-bg`), `color: #2D7D5F` (`--green`), Lucide `check` at 16px appears to the **left** of the label text (not replacing it — additive). Total content: `[check icon] [label]` in flex row, gap 6px.
+- Transition on `background-color`, `color`, `border-color` only: 100ms ease
+- Pill width must accommodate the longest label "Ideal customer" — verify at 80px min-width. If it overflows, truncate with ellipsis at 120px max-width.
+
+#### Action row (bottom)
+
+**Aggregate progress bar (appears during processing, above file list):**
+- A single 1px `--ink` (`#16213B` light / `--text-primary` `#F0EEE8` dark) horizontal bar, full width of the content area, tracking total files completed / total files. Appears when "Process and continue" is clicked. Disappears when all files complete. No shimmer, no animation on the bar itself — just `width` transition driven by actual progress.
+
+**Buttons:**
+- "Skip for now →" (ghost: no background, no border, `--text-secondary` color, 13px weight 500, 32px tall) — left side of action row
+- "Process and continue →" (primary: `background: #16213B` (`--ink`), `color: #FFFFFF`, 13px weight 500, 32px tall, 4px radius) — right side
+- `aria-label="Process uploaded files and continue to dashboard"` on primary
+
+**Processing state (after click):**
+- Primary button text: "Indexing…" — **static text, NO animated ellipsis, no looping dots** (brief explicitly bans looping animations)
+- Primary button: `opacity: 0.5`, `pointer-events: none`, `cursor: not-allowed`
+- "Skip for now →" remains visible and clickable during processing (founder can abort)
+
+**After all files complete:**
+- Primary button: "Continue →", re-enabled (opacity 1.0, pointer-events auto)
+
+**If no files added:**
+- "Process and continue →" button: absent. Only "Skip for now →" shown.
+
+**Inline validation note (if doc_type unassigned):**
+- Single line below action row: "Select a type for each file." (12px, `--text-secondary`). No icon, no red color — just informational.
+
+### Missing states (complete spec)
+
+| State | Trigger | UI response |
+|---|---|---|
+| Batch size limit reached | Cumulative uploads reach 50 MB or 20 files | Dropzone: 60% opacity, `cursor: not-allowed`, text "Upload limit reached". No inline message, the dropzone itself communicates. |
+| All files in error state | Every file row shows "Failed" | Primary button remains visible but shows inline note: "All files failed. Retry each file or skip." No disabled state — the retry links are the actions. |
+| Mid-upload page refresh | Browser refreshes with `uploading` status rows in localStorage | On mount: any row with `status: uploading` resets to `status: idle`. Rows with `status: processing` or `done` are restored from localStorage. |
+| Polling timeout | `status` poll returns no `done` / `error` after 30 seconds (15 polls) | Row transitions to error state: "Timed out · retry". Retry re-triggers the full extraction + ingest. |
+| Sample corpus reflection | Founder skipped, arrives at upload from dashboard with sample corpus loaded | MVC tracker shows all 4 pills with `background: rgba(26, 24, 22, 0.06)` (gray, not green). Sample data does NOT make pills green. Pills reflect only founder-uploaded and indexed documents. |
+| Zero-file state | Page loads with no files added | "Process and continue" is absent. "Skip for now →" is the sole CTA. |
+
+### Accessibility spec
+
+- **Dropzone:** `role="button"`, `tabIndex={0}`, `aria-label="Upload files. Drag and drop or press Enter to browse."`, `aria-describedby="dropzone-hint"` (the format hint text)
+- **UploadFileRow:** `role="listitem"` within a `role="list"` container. Remove button: `aria-label="Remove [filename]"`. Focus moves to the next row or the dropzone when a row is removed.
+- **DocTypeSelector (Radix):** standard Radix Select accessibility (built-in — no extra work needed)
+- **MVC pills:** `role="status"`, `aria-live="polite"`, `aria-label="[doc_type label]: [not uploaded / uploading / indexed]"` — updated on state change
+- **Progress bar:** `role="progressbar"`, `aria-valuenow={completedCount}`, `aria-valuemax={totalCount}`, `aria-label="Uploading files"`
+- **Contrast note:** `--text-tertiary` (`#B5B1A8` on `#FAFAF8`) = ~2.5:1 — fails WCAG AA for small text (4.5:1 required). It is used for the dropzone format hint (12px). This is a brief-level issue accepted as a known limitation for placeholder/hint text. **Do not use `--text-tertiary` for any required-reading text** in the upload flow; use `--text-secondary` (`#87837B` on `#FAFAF8` = ~4.4:1 — borderline AA pass) instead.
+
+### Minimum viable corpus guidance
+
+At the top of the page, a quiet status row shows whether the 4 P1 doc_types have been covered. This is informational, not a blocker. The founder can skip with 0 files or proceed with 1 file.
+
+Copy: "Seed your brain" as the page title (not a heading — 22px weight 500, `--text-primary`). Below: 12px `--text-secondary`: "Upload past wins, losses, brand voice, and ICP so Burrow can cite real evidence when scoring leads."
+
+No illustration. No robot. No "✨ AI will learn from your docs!" copy.
+
+### Skip flow
+
+Two skip points:
+1. **"Skip for now →"** on the upload page — routes directly to `/signals` with `localStorage.burrow.onboarded = "1"`. Does not set `localStorage.burrow.brainSeeded`.
+2. **Onboarding complete without upload** — same result.
+
+When the founder arrives at the dashboard without uploading:
+- The `#briefing` channel shows a quiet prompt at the bottom of the channel (not a modal, not a toast): a single card reading "Your brain has no documents yet. [Upload now →]" in `--bg-surface`, 16px padding, standard card styling. This is the re-entry point.
+- The "Grounded %" top strip counter shows "0%" in `--text-secondary` rather than `--text-primary` — a subtle signal without an alert state.
+
+### Re-entry from dashboard
+
+Clicking "Upload now →" in `#briefing` routes to `/onboarding/upload` with `?context=dashboard` query param. The page renders the same upload UI but with slightly different chrome: the sticky header shows the main dashboard header instead of the onboarding chrome. The left rail and top strip are visible.
+
+After completing the upload from within the dashboard, the user returns to `#briefing`.
+
+---
+
+## Processing Pipeline
+
+### Architecture diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  /app/onboarding/upload/page.tsx                                    │
+│      └── UploadFlow.tsx                                             │
+│           ├── <OnboardingChrome> ← EXTRACT from OnboardingFlow.tsx  │
+│           ├── <UploadDropzone>                                      │
+│           ├── 1px aggregate progress bar                            │
+│           ├── <UploadFileList>                                      │
+│           │     └── <UploadFileRow> × N                             │
+│           │           ├── <DocTypeSelector> (Radix Select)          │
+│           │           └── 1px per-file upload progress bar          │
+│           └── <MinimalCorpusTracker>                                │
+│                                                                     │
+│  /app/api/upload/route.ts  (POST — synchronous pipeline)            │
+│      auth check → MIME validate → extract text → chunk              │
+│      → ingest all chunks (Promise.all, p-limit 5) → return done     │
+│                                                                     │
+│  /app/api/onboarding/brain/route.ts  (POST — cr_agent auto-ingest)  │
+│      receives cr_agent form data → ingests brand_guide +            │
+│      competitor_intel docs into ZeroEntropy                         │
+│                                                                     │
+│  /lib/extractText.ts    — pdf-parse + mammoth wrappers              │
+│  /lib/chunkText.ts      — sliding-window chunker                    │
+│  /lib/classifyDocType.ts — keyword/regex → DocType | null          │
+│  /lib/zeroentropyClient.ts — ingest wrapper, 3× exponential retry  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key architectural decision:** ZeroEntropy ingest is synchronous per chunk. The whole pipeline for a 10-page PDF takes ~2–5s. Therefore: **no polling, no job store.** The POST handler blocks until all chunks are ingested and returns `{ status: "done" | "error" }` directly. This eliminates the multi-instance polling problem entirely.
+
+### Client-side
+
+1. User drops or selects files; auto-classification pre-fills `DocTypeSelector` for each
+2. User reviews/overrides doc_types, clicks "Process and continue"
+3. For each file (in parallel, capped at 3 concurrent uploads): POST to `/api/upload` with `FormData` containing file + `doc_type`
+4. Upload progress tracked via XHR `onprogress` — drives the 1px per-file progress bar
+5. On server response `{ status: "done" }`: row transitions to "Indexed" state immediately. No polling.
+6. On server response `{ status: "error", message }`: row shows "Failed · retry"
+7. `MinimalCorpusTracker` updates after each row resolves to "done"
+8. Aggregate progress bar width = `completedFiles / totalFiles`
+
+### Next.js App Router compatibility notes
+
+```ts
+// app/api/upload/route.ts — required header
+export const runtime = 'nodejs';  // required for pdf-parse, mammoth, busboy
+// Do NOT add `export const config = { api: { bodyParser: false } }` — that is Pages Router syntax only
+```
+
+```js
+// next.config.mjs — required for pdf-parse and mammoth webpack bundling
+export default {
+  // ...existing config
+  serverExternalPackages: ['pdf-parse', 'mammoth'],  // prevents webpack from bundling these Node-only modules
+};
+```
+
+```bash
+# npm install (pin file-type to v18 — v19+ is ESM-only, incompatible with CJS Next.js)
+npm install pdf-parse mammoth file-type@18 busboy p-limit
+npm install --save-dev @types/pdf-parse @types/busboy
+```
+
+**Use `busboy` for multipart parsing** (not `formidable` — formidable requires Node.js `IncomingMessage`, not the Web `Request` object used by App Router). Pattern:
+
+```ts
+import busboy from 'busboy';
+import { Readable } from 'stream';
+
+export async function POST(request: Request) {
+  const contentType = request.headers.get('content-type') ?? '';
+  const bb = busboy({ headers: { 'content-type': contentType } });
+  // pipe request body into busboy, collect file buffer
+}
+```
+
+### Server-side (`/api/upload`)
+
+```
+Route: POST /api/upload
+Runtime: nodejs (see next.config.mjs note above)
+```
+
+1. **Auth check** — verify session cookie/token. Return 401 if missing.
+2. Parse multipart FormData using `busboy` (see App Router pattern above)
+3. **MIME validation** — read first 8 bytes of the file buffer, check magic bytes against allowlist:
+   - PDF: `%PDF` (`25 50 44 46`)
+   - DOCX/ZIP: `PK` (`50 4B 03 04`)
+   - TXT/MD/CSV: no magic bytes — validate by extension only (acceptable risk for text files)
+   - Reject if extension claims PDF/DOCX but magic bytes don't match → 400 "Format not supported"
+   - Use npm package `file-type` for this check.
+4. **Size validation** — reject if file > 10 MB → 400 "Over 10 MB limit"
+5. **Session batch enforcement** — check session-scoped counter (use `headers().get('x-session-id')` or auth token as key, stored in a module-level Map): reject if session total > 50 MB or > 20 files → 400 "Upload limit reached"
+6. **Auto-classify** (if `doc_type` not provided or `null`): call `classifyDocType(filename, firstTokens)` — see below
+7. **Extract text:**
+   - `.txt` / `.md` / `.csv`: `buffer.toString('utf-8')`
+   - `.pdf`: `const { text } = await pdfParse(buffer)`
+   - `.docx` / `.doc`: `const { value } = await mammoth.extractRawText({ buffer })`
+   - On extraction failure → return `{ status: "error", message: "Could not read file" }`
+8. **Chunk:** sliding window, 512 tokens, 64-token overlap. Token count via whitespace split (good enough for a hackathon).
+9. **Ingest chunks:** `Promise.all` with `p-limit(5)` concurrency cap. Each chunk call:
+   ```ts
+   zeroentropyClient.ingest({
+     content: chunk.text,
+     metadata: {
+       doc_type,
+       filename,
+       chunk_id: sha256(`${filename}-${chunkIndex}`),  // idempotent key
+       chunk_index: chunkIndex,
+       total_chunks: chunks.length,
+       uploaded_at: Date.now(),
+       sample: false,
+     },
+     collection: "brain",
+   })
+   ```
+   - `chunk_id` is a sha256 hash — ZeroEntropy should upsert on this key, preventing duplicate chunks on retry
+10. On all chunks done → return `{ status: "done" }`
+11. On any chunk failure after 3 retries → return `{ status: "error", message: "Indexing failed" }`
+
+### cr_agent auto-ingest (`/api/onboarding/brain`)
+
+Called from `ConfirmForm.onSubmit` in `OnboardingFlow.tsx` **before** `router.push('/onboarding/upload')`.
+
+```
+Route: POST /api/onboarding/brain
+Body: { one_liner, description, icp, pricing, features, competitors: string[], stories }
+```
+
+1. Auth check (same as upload)
+2. Format `brand_guide` document: combine `one_liner + description + features + pricing + stories` into a single text block
+3. Ingest as ZeroEntropy document: `{ content: brandGuideText, metadata: { doc_type: "brand_guide", filename: "auto-company-profile", sample: false }, collection: "brain" }`
+4. For each competitor in `competitors[]`: ingest as `{ doc_type: "competitor_intel", filename: `auto-competitor-${i}` }`
+5. On success: respond `{ ok: true }` → client navigates to `/onboarding/upload`
+6. On failure: respond `{ ok: false }` — **do not block navigation**. The upload step still proceeds; the founder can upload brand/competitor docs manually.
+
+### `classifyDocType.ts` — keyword/regex rules
+
+```ts
+const RULES: Array<{ pattern: RegExp; docType: DocType }> = [
+  { pattern: /win|won|closed.won|close.*note|deal.*clos/i, docType: 'won_deal' },
+  { pattern: /loss|lost|churn|didn.t.*win|we.*lost|not.*selected/i, docType: 'lost_deal' },
+  { pattern: /brand.*guide|voice|tone|messaging|how.*we.*write|copy.*guide/i, docType: 'brand_guide' },
+  { pattern: /icp|ideal.*customer|target.*persona|who.*we.*sell/i, docType: 'icp' },
+  { pattern: /competitor|vs\.|versus|compared.*to|alternative/i, docType: 'competitor_intel' },
+  { pattern: /transcript|call.*notes|meeting.*notes|recorded/i, docType: 'call_transcript' },
+  { pattern: /case.*study|success.*story|customer.*story/i, docType: 'case_study' },
+];
+
+export function classifyDocType(filename: string, firstTokens: string): DocType | null {
+  const haystack = `${filename} ${firstTokens}`.toLowerCase();
+  for (const { pattern, docType } of RULES) {
+    if (pattern.test(haystack)) return docType;
+  }
+  return null; // uncertain — show placeholder, require user selection
+}
+```
+
+### ZeroEntropy integration
+
+**Environment variables (add all to `.env.local` and `.env.example`):**
+
+```bash
+# .env.example
+ZEROENTRROPY_API_KEY=your_key_here           # ZeroEntropy API key
+ZEROENTRROPY_BASE_URL=https://api.zeroentrropy.com  # base URL (confirm with ZE docs)
+ZERO_ENTROPY_MOCK=false                      # set to "true" to use in-memory mock
+```
+
+**`zeroentropyClient.ts` stub (implement this first; swap real client in when ZE API is confirmed):**
+
+```ts
+const BASE_URL = process.env.ZEROENTRROPY_BASE_URL ?? 'https://api.zeroentrropy.com';
+const API_KEY = process.env.ZEROENTRROPY_API_KEY ?? '';
+const IS_MOCK = process.env.ZERO_ENTROPY_MOCK === 'true';
+
+// In-memory mock store for local dev and test #4 (upload → retrieval smoke test)
+const mockStore: Array<{ content: string; metadata: Record<string, unknown> }> = [];
+
+export async function ingest(params: {
+  content: string;
+  metadata: Record<string, unknown>;
+  collection: string;
+}) {
+  if (IS_MOCK) {
+    mockStore.push(params);
+    return { id: crypto.randomUUID() };
+  }
+  // Real ZeroEntropy — verify these fields against actual API docs
+  const res = await fetch(`${BASE_URL}/collections/${params.collection}/ingest`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content: params.content, metadata: params.metadata }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`ZeroEntropy ingest failed: ${res.status} ${JSON.stringify(err)}`);
+  }
+  return res.json();
+}
+
+export async function deleteWhere(params: {
+  collection: string;
+  filter: Record<string, unknown>;
+}) {
+  if (IS_MOCK) {
+    // purge sample docs from mockStore
+    const before = mockStore.length;
+    mockStore.splice(0, mockStore.length,
+      ...mockStore.filter(d => !Object.entries(params.filter).every(([k, v]) => d.metadata[k] === v))
+    );
+    return { deleted: before - mockStore.length };
+  }
+  // Real ZeroEntropy delete endpoint — confirm path with ZE docs
+  const res = await fetch(`${BASE_URL}/collections/${params.collection}/delete`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filter: params.filter }),
+  });
+  if (!res.ok) throw new Error(`ZeroEntropy delete failed: ${res.status}`);
+  return res.json();
+}
+
+// For test #4: retrieve from mock store
+export function mockSearch(query: string, collection: string) {
+  if (!IS_MOCK) throw new Error('mockSearch only available in mock mode');
+  return mockStore.filter(d => d.metadata.collection === collection || true)
+    .slice(0, 3)
+    .map((d, i) => ({ content: d.content, metadata: d.metadata, score: 0.9 - i * 0.1 }));
+}
+```
+
+**`ZEROENTRROPY_API_KEY` — note the spelling** (double-R in "Entrropy" — match ZeroEntropy's actual env var name from their docs. The spec uses this spelling consistently; do not add a second variant).
+
+**Risk:** If ZeroEntropy's actual API contract differs (different endpoint paths, different auth header, no upsert support), the client needs adjustment. The mock mode (`ZERO_ENTROPY_MOCK=true`) is the default for local dev and for test #4 — the mock store is queryable via `mockSearch`, making end-to-end retrieval tests possible without a real ZE account.
+
+### Sample corpus
+
+`/lib/sampleCorpus.ts` exports an array of pre-chunked documents with `metadata.sample = true`. These are ingested when the founder skips upload.
+
+**Contamination prevention:** The Analyst's ZeroEntropy query includes `filter: { "metadata.sample": false }` when `localStorage.burrow.brainSeeded === "1"` (i.e., when the founder has uploaded real documents). When `brainSeeded` is not set, no filter is applied (all docs, including sample, are retrieved).
+
+**Sample corpus purge:** On first successful real-document ingest, the client sets `localStorage.burrow.brainSeeded = "1"`. The upload route also calls `zeroentropyClient.deleteWhere({ collection: "brain", filter: { "metadata.sample": true } })` to purge sample data. This ensures sample docs never surface in real retrievals after the first real upload.
+
+---
+
+## Error States
+
+| Error | Trigger | UI response |
+|---|---|---|
+| Format not supported (extension) | File extension not in allowlist | Row does not appear; inline message below dropzone: "filename.exe — format not supported" (12px `--text-secondary`). Auto-clears after 4s. |
+| Format not supported (MIME mismatch) | Magic bytes don't match extension | Server returns 400. Row shows "Failed · unsupported format". |
+| File too large | File > 10 MB | Inline message: "filename.pdf — over 10 MB limit" |
+| Batch limit reached | Session total > 50 MB or 20 files | Dropzone disabled: 60% opacity, "Upload limit reached". Server also enforces: 400 if bypassed. |
+| Text extraction failed | `pdf-parse` or `mammoth` throws | Row shows "Failed · retry" |
+| ZeroEntropy unavailable | Ingest call times out or 5xx after 3 retries | Row shows "Failed · retry". Retry re-runs extraction + ingest. Retry is idempotent (sha256 chunk_id prevents duplicates). |
+| Auth missing | No session on `/api/upload` | 401 — client shows "Session expired. Refresh the page." |
+| No doc_type selected | User clicks Process with null doc_types | Inline note under action row: "Select a type for each file." (12px `--text-secondary`). Button is NOT disabled — this is advisory. |
+| cr_agent auto-ingest fails | `/api/onboarding/brain` returns error | Navigation to Frame 3.5 proceeds regardless. Founder can upload brand/competitor docs manually. |
+| beforeunload with active uploads | Browser navigates away mid-upload | Show browser's native `beforeunload` prompt: "Upload in progress. Leave anyway?" |
+
+---
+
+## Post-Upload Dashboard Reflection
+
+After successful upload:
+1. `localStorage.burrow.brainSeeded = "1"` set client-side
+2. `"Grounded %"` counter in TopStrip begins reflecting actual data once the Analyst starts scoring signals (it was 0% before). This happens naturally — no special wiring needed.
+3. The `#briefing` "Your brain has no documents yet" prompt disappears (check `brainSeeded` on render).
+4. No toast, no celebration. The dashboard just works.
+
+---
+
+## Component File Map
+
+```
+/app
+  /onboarding
+    /upload
+      page.tsx             — Frame 3.5 page shell
+      UploadFlow.tsx       — orchestrator component
+  /_components
+    UploadDropzone.tsx     — drag-drop + file picker
+    UploadFileList.tsx     — list container
+    UploadFileRow.tsx      — single file row with progress + status
+    DocTypeSelector.tsx    — doc_type <select>
+    MinimalCorpusTracker.tsx — P1 coverage pills
+/app/api
+  /upload
+    route.ts               — POST handler: validate → extract → chunk → ingest (synchronous, returns done)
+  /onboarding
+    /brain
+      route.ts             — POST handler: cr_agent auto-ingest (brand_guide + competitor_intel)
+
+/lib
+  extractText.ts           — pdf-parse + mammoth wrappers
+  chunkText.ts             — sliding-window chunker, sha256 chunk_id
+  classifyDocType.ts       — keyword/regex rules → DocType | null
+  zeroentropyClient.ts     — ZeroEntropy ingest/delete wrapper + mock mode
+```
+
+---
+
+## State Management
+
+Local to the upload flow. No global store changes needed.
+
+```ts
+type UploadFile = {
+  id: string;          // uuid generated client-side
+  file: File;
+  docType: DocType | null;
+  status: 'idle' | 'uploading' | 'processing' | 'done' | 'error';
+  progress: number;    // 0–100, for the progress bar
+  jobId?: string;
+  error?: string;
+};
+```
+
+`UploadFlow` owns `UploadFile[]` in `useState`. No Zustand for this flow — it's self-contained and doesn't need to share state with the main dashboard.
+
+After completion: `router.push('/signals')` and set `localStorage.burrow.brainSeeded = "1"`.
+
+---
+
+## Open Questions (pre-review)
+
+1. Should the doc_type selection be required (blocking "Process") or optional (we auto-classify server-side and let user confirm)? Current spec: required.
+2. Should we show a doc count in the TopStrip somewhere? Current spec: no — the Grounded % counter already reflects brain quality.
+3. Should the `#briefing` re-entry card disappear immediately when the user starts upload (optimistic), or only after files are indexed (accurate)? Current spec: only after indexed (accurate).
+4. Should the upload page be accessible at any time (not just during onboarding), or gated to onboarding + re-entry? Current spec: both paths exist.
+
+---
+
+## CEO Review Findings
+
+### What already exists
+| Sub-problem | Existing code | Notes |
+|---|---|---|
+| Onboarding chrome + phases | `app/onboarding/OnboardingFlow.tsx` | Phases landing→research→form already built |
+| Design tokens | `app/globals.css` + inline `C` object | Fully established, reuse directly |
+| Brain agent storage pattern | `docs/specs/burrow_flow.md` Frame 4 | Pattern exists; ZeroEntropy client is net new |
+
+### NOT in scope (deferred)
+- MP3/MP4 audio transcription
+- URL import (paste a link, we scrape it)  
+- Team corpus sharing
+- Corpus management / bulk re-upload UI
+- Mock/fallback ZeroEntropy for demo resilience (post-MVP)
+- "Paste text directly" alternative to file upload
+
+### Scope expansion added by CEO review
+**cr_agent auto-ingest (approved by premise gate D1):** After the company info form (Frame 3) is submitted and the Brain stores it, the Brain agent should additionally auto-ingest the cr_agent's structured output as ZeroEntropy documents:
+- The "what the company does" + "features" → `brand_guide` doc
+- The "competitors" entries → one `competitor_intel` doc per competitor
+- This gives the corpus instant grounding with zero founder effort, before Frame 3.5 even starts.
+
+### Verification requirement
+After upload, the spec must be tested end-to-end: upload one `won_deal` doc, fetch one signal, verify the Analyst returns a retrieval from that doc in the Lead Card modal's Evidence region. If the retrieval doesn't appear, the upload pipeline ships but the demo is still hollow.
+
+### Dream state delta
+- **Today:** Empty corpus → 0% Grounded → hollow Lead Card
+- **This plan:** cr_agent auto-seeds `brand_guide` + `competitor_intel` on signup; founder uploads `won_deal` + `lost_deal` in Frame 3.5 → Evidence region shows real citations
+- **12-month ideal:** Every approved draft auto-indexes; every rejected draft auto-indexes; corpus grows automatically; upload is only needed for historical data
+
+---
+
+## Frame 3.5 — Updated Spec (post-CEO review)
+
+### Changes from initial spec
+1. **Auto-classify doc_type:** Server infers `doc_type` from filename + first 200 tokens; shows pre-filled selector for override. Manual assignment is override, not default.
+2. **Show only 4 MVC doc_types in onboarding:** `won_deal`, `lost_deal`, `brand_guide`, `icp`. P2/P3 types hidden behind "Add more types →" link after initial upload.
+3. **Job state in localStorage, not server memory:** `uploadJobs: Record<jobId, UploadJobState>` stored in `localStorage.burrow.uploadJobs`. The poll endpoint becomes stateless — it forwards to ZeroEntropy's job status or derives state from a persistent layer.
+4. **Skip path with sample corpus fallback:** If founder skips, the system auto-loads a sample corpus from `/lib/sampleCorpus.ts` (fictional but plausible data) so the dashboard never shows 0%. The sample corpus is tagged `metadata.sample = true` and shown with a subtle "(sample)" label in the Evidence region.
+
+---
+
+## Decision Audit Trail
+
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|-----------|-----------|----------|---------|
+| 1 | CEO | Add cr_agent auto-ingest | Scope expansion (approved) | P1 (completeness) | cr_agent already extracts brand/competitor data; auto-ingesting is free | Manual-only upload |
+| 2 | CEO | Show only 4 MVC doc_types in onboarding | Mechanical | P5 (explicit over clever) | 9 types causes decision fatigue in 3-min demo | Show all 9 upfront |
+| 3 | CEO | Auto-classify doc_type from filename + tokens | Taste decision | P5 (simpler) | Manual assignment is the highest friction point and most likely demo failure | Required manual |
+| 4 | CEO | Job state in localStorage not server Map | Mechanical | P5 (simpler) | Server restart during hackathon setup kills in-flight uploads | In-memory Map |
+| 5 | CEO | Sample corpus fallback on skip | Taste decision | P3 (pragmatic) | 0% Grounded on demo is a dead demo | No fallback |
+| 6 | Design | Dropzone first, MVC tracker below | Mechanical | P5 (explicit) | Action precedes feedback; tracker before dropzone creates guilt checklist | Tracker at top |
+| 7 | Design | Radix Select instead of native `<select>` | Mechanical | P5 (explicit) | Native `<select>` cannot be styled cross-browser to match design system | Native select |
+| 8 | Design | Auto-classify doc_type (pre-fill, user overrides) | Taste decision | P5 (simpler) | Manual-required is highest friction point and most likely demo failure | Required manual |
+| 9 | Design | Show only 4 MVC doc_types in onboarding | Mechanical | P3 (pragmatic) | 9 types causes decision fatigue; post-CEO decision confirmed | All 9 upfront |
+| 10 | Design | Job state in localStorage | Mechanical | P5 (explicit) | Server restart during hackathon setup kills in-flight uploads | In-memory Map |
+| 11 | Design | 6 missing states added to spec | Mechanical | P1 (completeness) | Unspecified states will be guessed by implementer | — |
+| 12 | Design | Accessibility spec added | Mechanical | P1 (completeness) | No aria labels = screen reader unusable, keyboard nav broken | — |
+| 13 | Design | Dark mode progress bar: `--text-primary` | Mechanical | P1 (completeness) | `--ink` (`#16213B`) is invisible against dark `--bg-base` (`#0F0E0D`) | Keep --ink |
+| 14 | Design | Dropzone 160px, 24px vertical padding | Mechanical | P5 (explicit) | 120px is cramped with two lines of text at design spec padding | 120px |
+| 15 | Design | Drop rejection: 200ms --red border flash | Mechanical | P5 (explicit) | No spec = engineer guesses (likely nothing or alert toast) | — |
+| 16 | Design | "Indexing…" is static text, no animation | Mechanical | P5 (explicit) | Animated ellipsis violates brief's prohibition on looping animations | — |
+| 17 | Design | Disabled button: opacity 0.5 + pointer-events none | Mechanical | P5 (explicit) | "80% opacity, not grayed-out" was contradictory | Vague 80% spec |
+| 18 | Design | Aggregate 1px progress bar above file list | Mechanical | P5 (simpler) | Multi-file processing needs a total progress signal; single bar is brief-compliant | No aggregate bar |
+| 19 | Eng | Synchronous pipeline — no polling, no job store | Mechanical | P5 (simpler) | ZeroEntropy ingest is synchronous; polling adds multi-instance complexity for no benefit | Async + polling |
+| 20 | Eng | MIME magic bytes validation via `file-type` | Mechanical | P1 (completeness) | Extension-only validation allows MIME spoofing attacks | Extension check |
+| 21 | Eng | Auth check on both upload routes | Mechanical | P1 (completeness) | Unauthenticated uploads expose ZeroEntropy to abuse | No auth spec |
+| 22 | Eng | `bodyParser: false` + formidable for multipart | Mechanical | P5 (explicit) | Default 4 MB bodyParser silently kills files > 4 MB before validation | Default bodyParser |
+| 23 | Eng | sha256 chunk_id for idempotent ingest | Mechanical | P5 (explicit) | Retry without idempotency creates duplicate chunks in ZeroEntropy | No dedup |
+| 24 | Eng | Promise.all with p-limit(5) for chunk ingest | Mechanical | P1 (completeness) | Serial N+1 ingest is slow; parallel with cap is safe and fast | Serial loop |
+| 25 | Eng | Extract OnboardingChrome to shared component | Mechanical | P5 (explicit) | Private Chrome component will be duplicated without extraction | Duplication |
+| 26 | Eng | Session-scoped batch enforcement server-side | Mechanical | P1 (completeness) | Client-only batch limit can be bypassed via direct API POST | Client-only |
+| 27 | Eng | classifyDocType keyword/regex rules (not LLM) | Mechanical | P5 (simpler) | LLM call adds latency and cost; regex is deterministic and demo-safe | LLM classify |
+| 28 | Eng | jobId ownership validation in status endpoint | Mechanical | P1 (completeness) | UUID jobIds without ownership check are enumerable | No ownership |
+| 29 | Eng | sample corpus purge on first real ingest | Mechanical | P5 (explicit) | Sample data mixes with real results unless explicitly purged | Permanent sample |
+| 30 | Eng | cr_agent failure non-blocking for navigation | Mechanical | P6 (bias to action) | cr_agent ingest failure should not block the founder from Frame 3.5 | Block on error |
+| 31 | DX | zeroentropyClient.ts concrete stub added | Mechanical | P1 (completeness) | "Verify before starting" is a blocker; mock mode enables test #4 without real ZE | Abstract placeholder |
+| 32 | DX | App Router multipart: busboy + runtime=nodejs | Mechanical | P5 (explicit) | formidable + Pages Router config silently fails in App Router | formidable |
+| 33 | DX | Remove dead /api/upload/status from file map | Mechanical | P5 (explicit) | Dead code contradicts Decision 19 (synchronous pipeline); engineer will implement it | Keep dead route |
+| 34 | DX | serverExternalPackages for pdf-parse + mammoth | Mechanical | P5 (explicit) | Without this, webpack bundles these modules and they fail at runtime | No config note |
+| 35 | DX | Pin file-type@18 (v19+ ESM-only) | Mechanical | P5 (explicit) | v19+ breaks CJS Next.js default config | Latest version |
+| 36 | DX | .env.example block added to spec | Mechanical | P1 (completeness) | Env vars scattered in prose; engineer creates inconsistent naming | Prose-only |
+| 37 | DX | ZERO_ENTROPY_MOCK=true enables test #4 end-to-end | Mechanical | P1 (completeness) | Without mock mode, critical smoke test requires a real ZE account | No mock |
