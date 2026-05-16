@@ -2,7 +2,7 @@ import { ZeroEntropy } from "zeroentropy";
 
 const IS_MOCK = process.env.ZERO_ENTROPY_MOCK === "true";
 
-type Metadata = Record<string, string | string[]>;
+export type Metadata = Record<string, string | string[]>;
 
 type MockDoc = {
   path: string;

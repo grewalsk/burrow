@@ -1,45 +1,91 @@
 import { NextResponse } from "next/server";
-import { addTextDocument, ensureCollection } from "@/lib/zeroentropyClient";
-import { fetchSignals } from "@/lib/mockHogAI";
+import { ensureCollection, addTextDocument } from "@/lib/zeroentropyClient";
 import { getSessionId, workspaceCollection } from "@/lib/workspace";
+import { kickoffSignalsFetch } from "@/lib/signalsClient";
+import { isHogMockMode } from "@/lib/hogClient";
+import { fetchSignals as mockFetchSignals } from "@/lib/mockHogAI";
+import { getCachedFetch, setCachedFetch, isCacheFresh } from "@/lib/signalsCache";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-export async function POST(): Promise<Response> {
+export async function POST(req: Request): Promise<Response> {
   const sessionId = await getSessionId();
   if (!sessionId) {
     return NextResponse.json({ ok: false, error: "Session expired" }, { status: 401 });
   }
+
+  const url = new URL(req.url);
+  const force = url.searchParams.get("force") === "true";
   const collection = workspaceCollection(sessionId);
   await ensureCollection(collection);
 
-  const signals = fetchSignals();
+  // ---- Mock path (HOGAI_MOCK=true): synchronous, no polling needed ----
+  if (isHogMockMode()) {
+    const signals = mockFetchSignals();
+    await Promise.allSettled(
+      signals.map((s) =>
+        addTextDocument({
+          collectionName: collection,
+          documentPath: `signal-${s.id}.txt`,
+          text: s.body,
+          metadata: {
+            doc_type: "signal",
+            signal_id: s.id,
+            platform: s.source === "X" ? "X" : s.source === "REDDIT" ? "Reddit" : s.source === "LINKEDIN" ? "LinkedIn" : "X",
+            author_handle: s.handle.replace(/^[@u]\/?/, ""),
+            author_profile_url: "",
+            post_url: s.url,
+            post_text: s.body,
+            pain_point: "",
+            why_relevant: "",
+            fetched_at: String(s.posted_at),
+            outreach_mode: s.source === "REDDIT" ? "reply" : "email",
+            enriched: "false",
+            status: "new",
+            sample: "false",
+          },
+        }),
+      ),
+    );
+    return NextResponse.json({ ok: true, mock: true, jobId: "mock", status: "done", count: signals.length });
+  }
 
-  const results = await Promise.allSettled(
-    signals.map((s) =>
-      addTextDocument({
-        collectionName: collection,
-        documentPath: `signal-${s.id}.txt`,
-        text: s.body,
-        metadata: {
-          doc_type: "signal",
-          signal_id: s.id,
-          source: s.source,
-          handle: s.handle,
-          context: s.context ?? "",
-          posted_at: String(s.posted_at),
-          url: s.url,
-          body: s.body,
-          status: "new",
-          sample: "false",
-        },
-      }),
-    ),
-  );
+  // ---- Real path: in-flight protection + cache check + kickoff ----
 
-  const added = results.filter((r) => r.status === "fulfilled").length;
-  const failed = results.length - added;
+  const existing = getCachedFetch(sessionId);
 
-  return NextResponse.json({ ok: true, requested: signals.length, added, failed });
+  if (existing && !existing.completedAt && !force) {
+    return NextResponse.json({
+      ok: true,
+      jobId: existing.jobId,
+      status: "queued",
+      already_in_flight: true,
+    });
+  }
+
+  if (existing && isCacheFresh(existing) && existing.signals && !force) {
+    return NextResponse.json({
+      ok: true,
+      jobId: existing.jobId,
+      status: "done",
+      cached: true,
+      signals: existing.signals,
+      cache_age_s: Math.floor((Date.now() - (existing.completedAt ?? 0)) / 1000),
+    });
+  }
+
+  const result = await kickoffSignalsFetch(collection);
+  if (!result.ok) {
+    return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+  }
+
+  setCachedFetch(sessionId, { jobId: result.jobId, startedAt: Date.now() });
+
+  return NextResponse.json({
+    ok: true,
+    jobId: result.jobId,
+    status: "queued",
+    prompt_preview: result.promptPreview,
+  });
 }
