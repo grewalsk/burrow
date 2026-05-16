@@ -1,0 +1,260 @@
+<svg width="100%" viewBox="0 0 900 1580" role="img" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+<title>Burrow complete twelve-frame flow with document upload</title>
+<desc>End-to-end user journey from landing page through onboarding (including new Frame 3.5 document upload), into the main Burrow workspace, signal fetch, ranked outreach, and send.</desc>
+<defs>
+<style>
+.ts { font-size: 12px; font-weight: 400; fill: #5F5E5A; }
+.th { font-size: 14px; font-weight: 500; fill: #2C2C2A; }
+</style>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<marker id="arrow-dashed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 2"/></marker>
+</defs>
+
+<!-- ONBOARDING SECTION -->
+<text class="ts" x="30" y="28">Onboarding flow</text>
+<line x1="30" y1="36" x2="870" y2="36" stroke="#5F5E5A" stroke-width="0.3"/>
+
+<!-- Frame 1: Landing -->
+<g>
+<rect x="30" y="50" width="160" height="78" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text class="ts" x="42" y="68">Frame 1</text>
+<text class="th" x="42" y="88">Landing page</text>
+<text class="ts" x="42" y="106">User pastes</text>
+<text class="ts" x="42" y="120">company URL</text>
+</g>
+<line x1="190" y1="89" x2="224" y2="89" marker-end="url(#arrow)"/>
+
+<!-- Frame 2: cr_agent research -->
+<g>
+<rect x="224" y="50" width="180" height="158" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text class="ts" x="236" y="68">Frame 2</text>
+<text class="th" x="236" y="88">cr_agent research</text>
+<text class="ts" x="236" y="108">1. Crawl hrefs</text>
+<text class="ts" x="236" y="122">2. Pick useful pages</text>
+<text class="ts" x="236" y="136">   (what/pricing/</text>
+<text class="ts" x="236" y="150">    features/reviews)</text>
+<text class="ts" x="236" y="170">3. Extract content</text>
+<text class="ts" x="236" y="190">Output: profile</text>
+</g>
+<line x1="404" y1="89" x2="438" y2="89" marker-end="url(#arrow)"/>
+
+<!-- Frame 3: Confirmation form -->
+<g>
+<rect x="438" y="50" width="170" height="158" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text class="ts" x="450" y="68">Frame 3</text>
+<text class="th" x="450" y="88">Confirmation form</text>
+<text class="ts" x="450" y="108">Pre-filled from</text>
+<text class="ts" x="450" y="122">cr_agent. User edits,</text>
+<text class="ts" x="450" y="136">then submits to</text>
+<text class="ts" x="450" y="150">brain agent.</text>
+<text class="ts" x="450" y="170">Auto-ingests:</text>
+<text class="ts" x="450" y="184">brand_guide +</text>
+<text class="ts" x="450" y="198">competitor_intel</text>
+</g>
+<line x1="523" y1="208" x2="523" y2="252" marker-end="url(#arrow)"/>
+
+<!-- Frame 3.5: Document upload (NEW) -->
+<g>
+<rect x="380" y="252" width="286" height="180" rx="10" fill="#FBEAF0" stroke="#993556" stroke-width="0.5"/>
+<text class="ts" x="392" y="270">Frame 3.5</text>
+<text class="th" x="392" y="290">Document upload</text>
+<text class="ts" x="392" y="310">Drag/drop personal docs:</text>
+<text class="ts" x="392" y="326">won_deal, lost_deal,</text>
+<text class="ts" x="392" y="342">brand_guide, ICP</text>
+<text class="ts" x="392" y="362">Auto-classify doc_type</text>
+<text class="ts" x="392" y="378">→ extract text → chunk</text>
+<text class="ts" x="392" y="394">→ ingest to brain via ZE</text>
+<text class="ts" x="392" y="414">MVC tracker shows</text>
+<text class="ts" x="392" y="430">coverage. Skip allowed.</text>
+</g>
+
+<!-- Brain persistence line from Frame 3 through 3.5 -->
+<line x1="320" y1="89" x2="320" y2="342" stroke="#534AB7" stroke-width="2" stroke-dasharray="4 3"/>
+<text class="ts" x="228" y="200">Brain agent</text>
+<text class="ts" x="228" y="216">orchestrator</text>
+<text class="ts" x="228" y="232">ingests all data</text>
+<text class="ts" x="228" y="248">to Vault + ZE</text>
+
+<!-- Arrow down from Frame 3.5 to Frame 5 (skip or continue) -->
+<line x1="523" y1="432" x2="523" y2="476" marker-end="url(#arrow)"/>
+
+<!-- MAIN APP SECTION -->
+<text class="ts" x="30" y="470">Main workspace</text>
+<line x1="30" y1="478" x2="870" y2="478" stroke="#5F5E5A" stroke-width="0.3"/>
+
+<!-- Frame 5: Burrow workspace -->
+<g>
+<rect x="30" y="492" width="840" height="140" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text class="ts" x="42" y="510">Frame 5</text>
+<text class="th" x="42" y="530">Burrow workspace</text>
+<text class="ts" x="42" y="550">Top: metrics strip (SIGNALS SEEN, HIGH-FIT, PENDING, APPROVED, AVG TIME, GROUNDED %)</text>
+<text class="ts" x="42" y="566">Left: channels (#signals, #drafts, #sent, #briefing, #ask) · Center: feed</text>
+<text class="ts" x="42" y="582">Top-right: [Fetch signals button] [Find outreach button]</text>
+<text class="ts" x="42" y="606">If founder skipped upload: #briefing shows "Seed your brain [Upload now →]"</text>
+</g>
+
+<!-- Two parallel branches from Frame 5: Fetch Signals (left) and Find Outreach (right) -->
+<line x1="180" y1="632" x2="180" y2="676" marker-end="url(#arrow)"/>
+<text class="ts" x="90" y="662">Click</text>
+<text class="ts" x="90" y="678">"Fetch</text>
+<text class="ts" x="90" y="694">signals"</text>
+
+<line x1="780" y1="632" x2="780" y2="900" stroke="#5F5E5A" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arrow-dashed)"/>
+<text class="ts" x="788" y="780">Click "Find outreach"</text>
+<text class="ts" x="788" y="796">(once signals exist)</text>
+
+<!-- Frame 6: Fetch signals from Hog -->
+<g>
+<rect x="30" y="676" width="300" height="100" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text class="ts" x="42" y="694">Frame 6</text>
+<text class="th" x="42" y="714">Fetch signals via TheHog</text>
+<text class="ts" x="42" y="734">Tool: Hog API returns N signals</text>
+<text class="ts" x="42" y="750">from Reddit, X, HN matching ICP</text>
+<text class="ts" x="42" y="766">Each signal = intent-rich post</text>
+</g>
+
+<line x1="180" y1="776" x2="180" y2="810" marker-end="url(#arrow)"/>
+
+<!-- Frame 7: Brain stores signals -->
+<g>
+<rect x="30" y="810" width="300" height="90" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text class="ts" x="42" y="828">Frame 7</text>
+<text class="th" x="42" y="848">Brain formats + stores</text>
+<text class="ts" x="42" y="868">Each signal → entity + chunks</text>
+<text class="ts" x="42" y="884">Indexed in Vault + ZeroEntropy</text>
+</g>
+
+<!-- Both branches converge at Frame 8 -->
+<line x1="180" y1="900" x2="180" y2="934" marker-end="url(#arrow)"/>
+<line x1="180" y1="934" x2="450" y2="934" marker-end="url(#arrow)"/>
+<line x1="780" y1="934" x2="450" y2="934" marker-end="url(#arrow)"/>
+
+<!-- OUTREACH SECTION -->
+<text class="ts" x="30" y="928">Outreach generation</text>
+<line x1="30" y1="936" x2="870" y2="936" stroke="#5F5E5A" stroke-width="0.3"/>
+
+<!-- Frame 8: Find outreach trigger -->
+<g>
+<rect x="330" y="948" width="240" height="90" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text class="ts" x="342" y="966">Frame 8</text>
+<text class="th" x="342" y="986">"Find outreach" button</text>
+<text class="ts" x="342" y="1006">User triggers ranking of signals</text>
+<text class="ts" x="342" y="1022">against company profile</text>
+</g>
+
+<line x1="450" y1="1038" x2="450" y2="1072" marker-end="url(#arrow)"/>
+
+<!-- Frame 9: ZE rerank -->
+<g>
+<rect x="330" y="1072" width="240" height="100" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+<text class="ts" x="342" y="1090">Frame 9</text>
+<text class="th" x="342" y="1110">ZeroEntropy rerank</text>
+<text class="ts" x="342" y="1130">Returns top 5 signals or none</text>
+<text class="ts" x="342" y="1146">if below relevance threshold</text>
+<text class="ts" x="342" y="1162">Evidence: cites brain docs</text>
+</g>
+
+<line x1="450" y1="1172" x2="450" y2="1206" marker-end="url(#arrow)"/>
+
+<!-- Frame 10: Hog enrichment -->
+<g>
+<rect x="330" y="1206" width="240" height="90" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text class="ts" x="342" y="1224">Frame 10</text>
+<text class="th" x="342" y="1244">Hog enrichment</text>
+<text class="ts" x="342" y="1264">Resolve handle → contact info</text>
+<text class="ts" x="342" y="1280">for each of top 5 signals</text>
+</g>
+
+<line x1="450" y1="1296" x2="450" y2="1330" marker-end="url(#arrow)"/>
+
+<!-- Frame 11: Draft model -->
+<g>
+<rect x="330" y="1330" width="240" height="100" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text class="ts" x="342" y="1348">Frame 11</text>
+<text class="th" x="342" y="1368">Draft model (Claude Haiku)</text>
+<text class="ts" x="342" y="1388">Generate outreach email</text>
+<text class="ts" x="342" y="1404">per lead, grounded in</text>
+<text class="ts" x="342" y="1420">company profile + signal</text>
+</g>
+
+<line x1="450" y1="1430" x2="450" y2="1464" marker-end="url(#arrow)"/>
+
+<!-- Frame 12: User approves + sends -->
+<g>
+<rect x="330" y="1464" width="240" height="74" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text class="ts" x="342" y="1482">Frame 12</text>
+<text class="th" x="342" y="1502">Review drafts → Approve → Send</text>
+<text class="ts" x="342" y="1520">Email sent. Lands in #sent.</text>
+</g>
+
+<!-- Side panel: Tech stack callouts -->
+<g>
+<rect x="600" y="50" width="270" height="1488" rx="8" fill="#F3F2EE" stroke="#B5B1A8" stroke-width="0.5" stroke-dasharray="3 3"/>
+<text class="th" x="612" y="74">Tech wiring</text>
+
+<text class="ts" x="612" y="102">Frame 2–3:</text>
+<text class="ts" x="612" y="118">cr_agent crawls</text>
+<text class="ts" x="612" y="134">company website,</text>
+<text class="ts" x="612" y="150">extracts brand data</text>
+
+<text class="ts" x="612" y="176">Frame 3 submit:</text>
+<text class="ts" x="612" y="192">/api/onboarding/brain</text>
+<text class="ts" x="612" y="208">Auto-ingests to ZE:</text>
+<text class="ts" x="612" y="224">brand_guide +</text>
+<text class="ts" x="612" y="240">competitor_intel</text>
+
+<text class="ts" x="612" y="266">Frame 3.5:</text>
+<text class="ts" x="612" y="282">/api/upload</text>
+<text class="ts" x="612" y="298">• Multipart parse</text>
+<text class="ts" x="612" y="314">• MIME validate</text>
+<text class="ts" x="612" y="330">• Auto-classify</text>
+<text class="ts" x="612" y="346">  doc_type</text>
+<text class="ts" x="612" y="362">• Extract text</text>
+<text class="ts" x="612" y="378">  (pdf-parse,</text>
+<text class="ts" x="612" y="394">   mammoth)</text>
+<text class="ts" x="612" y="410">• Chunk + embed</text>
+<text class="ts" x="612" y="426">• Ingest to ZE</text>
+<text class="ts" x="612" y="442">  (sync, no job</text>
+<text class="ts" x="612" y="458">   queue)</text>
+
+<text class="ts" x="612" y="484">Frame 6:</text>
+<text class="ts" x="612" y="500">TheHog API</text>
+<text class="ts" x="612" y="516">signals.poll()</text>
+
+<text class="ts" x="612" y="542">Frame 7:</text>
+<text class="ts" x="612" y="558">Brain stores to</text>
+<text class="ts" x="612" y="574">Vault (entities +</text>
+<text class="ts" x="612" y="590">chunks). Auto-</text>
+<text class="ts" x="612" y="606">extracts edges</text>
+<text class="ts" x="612" y="622">(mentions,</text>
+<text class="ts" x="612" y="638">works_at)</text>
+
+<text class="ts" x="612" y="664">Frame 9:</text>
+<text class="ts" x="612" y="680">Vault hybrid recall</text>
+<text class="ts" x="612" y="696">(vector + keyword</text>
+<text class="ts" x="612" y="712">+ RRF) → 50 cand.</text>
+<text class="ts" x="612" y="728">ZE zerank-2</text>
+<text class="ts" x="612" y="744">reranks → top 5</text>
+
+<text class="ts" x="612" y="770">Frame 11:</text>
+<text class="ts" x="612" y="786">Claude Haiku API</text>
+<text class="ts" x="612" y="802">draft endpoint</text>
+
+<text class="ts" x="612" y="828">Full loop:</text>
+<text class="ts" x="612" y="844">Signal → Brain</text>
+<text class="ts" x="612" y="860">→ Vault → ZE</text>
+<text class="ts" x="612" y="876">→ Claude → Draft</text>
+<text class="ts" x="612" y="892">→ Hog contact</text>
+<text class="ts" x="612" y="908">→ Email sent</text>
+<text class="ts" x="612" y="924">~60 sec end-to-end</text>
+</g>
+
+<!-- Bottom legend -->
+<text class="ts" x="30" y="1542">Legend</text>
+<rect x="90" y="1532" width="12" height="12" rx="2" fill="#FBEAF0" stroke="#993556" stroke-width="0.5"/>
+<text class="ts" x="108" y="1542">upload (new Frame 3.5)</text>
+
+<line x1="320" y1="1538" x2="360" y2="1538" stroke="#534AB7" stroke-width="2" stroke-dasharray="4 3"/>
+<text class="ts" x="370" y="1542">brain agent (orchestrator)</text>
+
+</svg>
