@@ -1584,6 +1584,7 @@ export function OnboardingFlow() {
   const finish = (doc: Doc) => {
     ensureSessionCookie();
     const payload = {
+      url,
       one_liner: doc.one_liner,
       description: doc.description,
       icp: doc.icp,

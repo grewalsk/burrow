@@ -10,6 +10,7 @@ export const maxDuration = 60;
 type Story = { name?: string; description?: string; source?: string };
 
 type BrainPayload = {
+  url?: string;
   one_liner?: string;
   description?: string;
   icp?: string;
@@ -67,6 +68,7 @@ export async function POST(req: Request): Promise<Response> {
     await ensureCollection(collection);
 
     const brandParts: string[] = [];
+    if (body.url) brandParts.push(`Website: ${body.url}`);
     if (body.one_liner) brandParts.push(body.one_liner);
     if (body.description) brandParts.push(body.description);
     if (body.features?.length) brandParts.push(`Features: ${body.features.join(", ")}`);
@@ -77,6 +79,7 @@ export async function POST(req: Request): Promise<Response> {
         filename: "auto-company-profile",
         docType: "brand_guide",
         text: brandParts.join("\n\n"),
+        extras: body.url ? { company_url: body.url, is_cr_agent: "true" } : { is_cr_agent: "true" },
       });
     }
 

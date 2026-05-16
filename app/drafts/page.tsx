@@ -1,11 +1,7 @@
-import { ChannelHeader } from "../_components/ChannelHeader";
-import { EmptyState } from "../_components/EmptyState";
+import { DraftsView } from "../_components/DraftsView";
+
+export const dynamic = "force-dynamic";
 
 export default function DraftsPage() {
-  return (
-    <div className="px-8 py-8">
-      <ChannelHeader name="#drafts" description="Replies waiting on your approval." />
-      <EmptyState message="Nothing pending." />
-    </div>
-  );
+  return <DraftsView />;
 }

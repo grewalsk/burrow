@@ -2,22 +2,22 @@
 
 import { useEffect, useState } from "react";
 
-type Counters = {
-  signalsSeen: number;
-  highFitLeads: number;
-  draftsPending: number;
-  approved: number;
-  avgTimeToDraftSec: number;
-  groundedPct: number;
+type Status = {
+  brand_docs: number;
+  signals: number;
+  ranked_signals: number;
+  drafts_pending: number;
+  drafts_sent: number;
+  grounded_pct: number;
 };
 
-const INITIAL: Counters = {
-  signalsSeen: 1247,
-  highFitLeads: 12,
-  draftsPending: 4,
-  approved: 8,
-  avgTimeToDraftSec: 47,
-  groundedPct: 98,
+const INITIAL: Status = {
+  brand_docs: 0,
+  signals: 0,
+  ranked_signals: 0,
+  drafts_pending: 0,
+  drafts_sent: 0,
+  grounded_pct: 0,
 };
 
 function formatNumber(n: number): string {
@@ -25,32 +25,34 @@ function formatNumber(n: number): string {
 }
 
 export function TopStrip() {
-  const [counters, setCounters] = useState<Counters>(INITIAL);
+  const [status, setStatus] = useState<Status>(INITIAL);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setCounters((c) => {
-        // Quiet ticks: nudge a few values occasionally. Most ticks are no-ops.
-        const next: Counters = { ...c };
-        if (Math.random() < 0.5) next.signalsSeen = c.signalsSeen + 1;
-        if (Math.random() < 0.12) next.highFitLeads = c.highFitLeads + 1;
-        if (Math.random() < 0.18) next.draftsPending = Math.max(0, c.draftsPending + (Math.random() < 0.4 ? -1 : 1));
-        if (Math.random() < 0.10) next.approved = c.approved + 1;
-        if (Math.random() < 0.25) next.avgTimeToDraftSec = Math.max(20, Math.min(90, c.avgTimeToDraftSec + (Math.random() < 0.5 ? -1 : 1)));
-        if (Math.random() < 0.08) next.groundedPct = Math.max(90, Math.min(100, c.groundedPct + (Math.random() < 0.5 ? -1 : 1)));
-        return next;
-      });
-    }, 2200);
-    return () => clearInterval(id);
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/brain/status", { cache: "no-store" });
+        const j = await r.json();
+        if (!cancelled && j.ok && j.status) setStatus(j.status as Status);
+      } catch {
+        // ignore — counters stay at last value
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   const items: { label: string; value: string }[] = [
-    { label: "Signals seen", value: formatNumber(counters.signalsSeen) },
-    { label: "High-fit leads", value: formatNumber(counters.highFitLeads) },
-    { label: "Drafts pending", value: formatNumber(counters.draftsPending) },
-    { label: "Approved", value: formatNumber(counters.approved) },
-    { label: "Avg time-to-draft", value: `${counters.avgTimeToDraftSec}s` },
-    { label: "Grounded %", value: `${counters.groundedPct}%` },
+    { label: "Brand docs", value: formatNumber(status.brand_docs) },
+    { label: "Signals seen", value: formatNumber(status.signals) },
+    { label: "Ranked", value: formatNumber(status.ranked_signals) },
+    { label: "Drafts pending", value: formatNumber(status.drafts_pending) },
+    { label: "Sent", value: formatNumber(status.drafts_sent) },
+    { label: "Grounded %", value: `${status.grounded_pct}%` },
   ];
 
   return (
