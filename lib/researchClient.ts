@@ -264,8 +264,15 @@ export async function extractWithGemini(markdown: string): Promise<Doc> {
   if (!apiKey) throw new Error("GOOGLE_GENAI_API_KEY not set");
 
   const genai = new GoogleGenerativeAI(apiKey);
+  // Note: gemini-2.0-flash and gemini-2.0-flash-lite both come with free
+  // tier quota = 0 on many newer Google Cloud projects. gemini-2.5-flash-lite
+  // is the smallest production model that's reliably free-tier enabled (and
+  // has the largest free quota — 15 RPM, 1000/day, 1M TPM). Same JSON-schema
+  // mode, same call shape. Override via env GEMINI_MODEL if you have paid
+  // access and want better extraction quality (try gemini-2.5-flash).
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   const model = genai.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: modelName,
     generationConfig: {
       responseMimeType: "application/json",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -361,6 +368,11 @@ export async function research(url: string): Promise<ResearchResult> {
         source: "gemini",
       };
     } catch (e) {
+      // Log the actual error message server-side so we can see WHY Gemini failed.
+      // The classifyError() string in fallback_reason is intentionally short for
+      // the client; the full error goes here for the dev console.
+      console.error("[research] Gemini extraction failed for", normalized, ":");
+      console.error(e);
       result = {
         doc: fallbackDoc(normalized, crawl.markdown),
         pages_crawled: crawl.pages_crawled,
