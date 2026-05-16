@@ -47,6 +47,47 @@ export async function ensureCollection(collectionName: string): Promise<void> {
   }
 }
 
+export type RerankResult = {
+  index: number;
+  score: number;
+};
+
+export async function rerank(params: {
+  query: string;
+  documents: string[];
+  topN?: number;
+  model?: string;
+  latency?: "fast" | "slow";
+}): Promise<RerankResult[]> {
+  if (IS_MOCK) {
+    // Deterministic fake rerank: score by overlap of query words and doc words.
+    // Good enough for offline UI work — not used in any real ranking path.
+    const qwords = new Set(params.query.toLowerCase().split(/\W+/).filter(Boolean));
+    const scored = params.documents.map((doc, index) => {
+      const dwords = doc.toLowerCase().split(/\W+/).filter(Boolean);
+      const hits = dwords.filter((w) => qwords.has(w)).length;
+      const score = Math.min(0.99, hits / Math.max(qwords.size, 1));
+      return { index, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return params.topN ? scored.slice(0, params.topN) : scored;
+  }
+  const ze = getClient()!;
+  // zerank-1-small is the fastest tier; bump to zerank-1 or zerank-2 for
+  // tighter ordering at the cost of latency/quota.
+  const model = params.model ?? "zerank-1-small";
+  const res = await ze.models.rerank({
+    model,
+    query: params.query,
+    documents: params.documents,
+    top_n: params.topN,
+    latency: params.latency,
+  });
+  return (res.results as Array<{ index: number; relevance_score?: number; score?: number }>).map(
+    (r) => ({ index: r.index, score: r.relevance_score ?? r.score ?? 0 }),
+  );
+}
+
 export async function addTextDocument(params: {
   collectionName: string;
   documentPath: string;
