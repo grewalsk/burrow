@@ -9,6 +9,7 @@ import {
   listDocuments,
   topDocuments,
 } from "./zeroentropyClient";
+import { extractJsonObject } from "./researchClient";
 
 const GEMINI_TIMEOUT_MS = 20_000;
 const MAX_GROUNDING_DOCS = 4;
@@ -236,15 +237,21 @@ export async function generateDraft(params: {
   if (!apiKey) return templateDraft(params.signal, evidence);
 
   const genai = new GoogleGenerativeAI(apiKey);
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  // Mirror researchClient.ts model strategy: default to gemma-4-31b-it
+  // (open-source, unlimited daily, 15 RPM). Override via GEMINI_MODEL for
+  // paid Gemini access.
+  const modelName = process.env.GEMINI_MODEL || "gemma-4-31b-it";
+  const isGemma = modelName.toLowerCase().startsWith("gemma");
   const model = genai.getGenerativeModel({
     model: modelName,
-    generationConfig: {
-      responseMimeType: "application/json",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      responseSchema: DRAFT_SCHEMA as any,
-      temperature: 0.6,
-    },
+    generationConfig: isGemma
+      ? { temperature: 0.6 }
+      : {
+          responseMimeType: "application/json",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          responseSchema: DRAFT_SCHEMA as any,
+          temperature: 0.6,
+        },
   });
 
   const websiteBlock = identity
@@ -288,7 +295,9 @@ export async function generateDraft(params: {
     params.signal.contact_role ? `Role: ${params.signal.contact_role}` : "",
     params.signal.contact_company ? `Company: ${params.signal.contact_company}` : "",
     "",
-    "Now write the email. Return strictly { subject, body }.",
+    isGemma
+      ? 'Respond with ONLY a single JSON object matching this shape (no markdown, no prose, no code fences):\n{ "subject": string, "body": string }\n\nNow write the email.'
+      : "Now write the email. Return strictly { subject, body }.",
   ]
     .filter(Boolean)
     .join("\n")
@@ -299,7 +308,14 @@ export async function generateDraft(params: {
   try {
     const result = await model.generateContent(userPrompt);
     const text = result.response.text();
-    const parsed = JSON.parse(text) as { subject?: unknown; body?: unknown };
+    let parsed: { subject?: unknown; body?: unknown };
+    try {
+      parsed = extractJsonObject(text) as { subject?: unknown; body?: unknown };
+    } catch (parseErr) {
+      console.error(`[draftLLM] JSON parse failed for model=${modelName}. Raw (first 1500 chars):`);
+      console.error(text.slice(0, 1500));
+      throw parseErr;
+    }
     const subject = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
     const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
     if (!subject || !body) {

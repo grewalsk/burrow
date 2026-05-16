@@ -265,7 +265,7 @@ Treat these as irrelevant to extraction even if they appear in the content:
 // top-level { ... } block, try to parse each, and return the LARGEST one
 // that parses successfully. Returning the largest correctly skips a tiny
 // schema-text echo like `{"name": string}` in favor of the real response.
-function extractJsonObject(text: string): unknown {
+export function extractJsonObject(text: string): unknown {
   // Try direct parse first — Gemini with responseSchema returns clean JSON.
   try { return JSON.parse(text); } catch { /* fall through */ }
 
