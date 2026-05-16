@@ -1,0 +1,1692 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Burrow — Frontend design brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="deck-stage.js"></script>
+<style>
+  :root {
+    /* palette */
+    --bg-base: #FAFAF8;
+    --bg-surface: #F3F2EE;
+    --bg-elevated: #FFFFFF;
+    --text-primary: #1A1816;
+    --text-secondary: #87837B;
+    --text-tertiary: #B5B1A8;
+    --border-subtle: rgba(26, 24, 22, 0.08);
+    --border-default: rgba(26, 24, 22, 0.16);
+    --ink: #16213B;
+    --green: #2D7D5F;
+    --green-bg: rgba(45, 125, 95, 0.10);
+    --amber: #B08338;
+    --amber-bg: rgba(176, 131, 56, 0.10);
+    --gray-pill: rgba(26, 24, 22, 0.06);
+
+    /* agent colors */
+    --c-scout: #6C9690;
+    --c-analyst: #8576A4;
+    --c-writer: #B47D75;
+    --c-watcher: #B7976A;
+    --c-chief: #8A8884;
+
+    /* type scale (slide-projection sizing) */
+    --type-mega: 156px;
+    --type-title: 64px;
+    --type-h2: 44px;
+    --type-h3: 32px;
+    --type-body: 26px;
+    --type-small: 20px;
+    --type-micro: 15px;
+    --type-region: 13px; /* uppercase region labels */
+
+    /* spacing */
+    --pad-x: 120px;
+    --pad-top: 100px;
+    --pad-bottom: 100px;
+    --gap-title: 56px;
+    --gap-item: 24px;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #2a2826;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text-primary);
+  }
+
+  deck-stage section {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-size: var(--type-body);
+    line-height: 1.55;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    overflow: hidden;
+  }
+
+  /* ─────── helpers ─────── */
+  .frame {
+    width: 100%;
+    height: 100%;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-title);
+  }
+  .frame.compact { gap: 40px; }
+
+  .eyebrow {
+    font-size: var(--type-region);
+    line-height: 1.3;
+    font-weight: 500;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .title {
+    font-size: var(--type-title);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin: 0;
+  }
+  .h2 {
+    font-size: var(--type-h2);
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0;
+  }
+  .h3 {
+    font-size: var(--type-h3);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .body { font-size: var(--type-body); line-height: 1.55; }
+  .small { font-size: var(--type-small); line-height: 1.5; color: var(--text-secondary); }
+  .micro { font-size: var(--type-micro); line-height: 1.4; color: var(--text-secondary); }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .secondary { color: var(--text-secondary); }
+  .tertiary { color: var(--text-tertiary); }
+  .ink { color: var(--ink); }
+
+  .divider {
+    height: 1px;
+    background: var(--border-subtle);
+    width: 100%;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--type-micro);
+    color: var(--text-tertiary);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .topbar .brand { color: var(--text-secondary); }
+  .topbar .brand .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+    background: var(--ink); vertical-align: middle; margin-right: 10px;
+    transform: translateY(-2px);
+  }
+
+  /* ─────── slide 1: title ─────── */
+  .s-title {
+    justify-content: space-between;
+  }
+  .s-title .wordmark {
+    font-size: 220px;
+    font-weight: 500;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    color: var(--text-primary);
+  }
+  .s-title .lockup {
+    display: flex;
+    align-items: flex-end;
+    gap: 28px;
+  }
+  .s-title .lockup .dot-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 28px;
+  }
+  .s-title .lockup .dot-stack span {
+    width: 24px; height: 24px; border-radius: 6px;
+  }
+  .s-title .strap {
+    max-width: 1100px;
+    font-size: var(--type-h3);
+    line-height: 1.35;
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+  .s-title .strap em { color: var(--text-primary); font-style: normal; font-weight: 500; }
+
+  .meta-row {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    color: var(--text-tertiary);
+    font-size: var(--type-micro);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+  .meta-row .group { display: flex; flex-direction: column; gap: 6px; }
+  .meta-row .group .v { color: var(--text-primary); font-weight: 500; letter-spacing: -0.005em; font-size: 22px; }
+
+  /* ─────── slide 2: one-paragraph ─────── */
+  .s-overview .lede {
+    font-size: 38px;
+    line-height: 1.45;
+    font-weight: 400;
+    letter-spacing: -0.012em;
+    max-width: 1480px;
+    color: var(--text-primary);
+  }
+  .s-overview .lede .mark { color: var(--ink); font-weight: 500; }
+  .s-overview .lede .quiet { color: var(--text-secondary); }
+
+  .s-overview .closing {
+    margin-top: 24px;
+    display: flex; gap: 60px; flex-wrap: wrap;
+    color: var(--text-secondary);
+    font-size: var(--type-small);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .s-overview .closing span::before {
+    content: "—"; margin-right: 12px; color: var(--text-tertiary);
+  }
+
+  /* ─────── slide 3: taste north star ─────── */
+  .star-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px 56px;
+  }
+  .star-card {
+    border-top: 1px solid var(--border-subtle);
+    padding: 32px 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .star-card .num {
+    font-size: var(--type-micro);
+    font-weight: 500;
+    color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+  }
+  .star-card .name {
+    font-size: 48px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.0;
+  }
+  .star-card .note { color: var(--text-secondary); font-size: 22px; line-height: 1.45; max-width: 540px; }
+
+  /* ─────── slide 4: anti-patterns ─────── */
+  .anti {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px 32px;
+  }
+  .anti .item {
+    display: flex; gap: 18px; align-items: baseline;
+    padding: 18px 0;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 23px; line-height: 1.3;
+    color: var(--text-tertiary);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--text-tertiary);
+  }
+  .anti .item .n {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    font-size: 16px;
+    letter-spacing: 0;
+    flex: 0 0 28px;
+    padding-top: 4px;
+  }
+  .anti .item.keep {
+    color: var(--text-primary);
+    text-decoration: none;
+    border-top-color: var(--text-primary);
+  }
+  .anti .item.keep .n { color: var(--ink); }
+
+  .anti-foot {
+    color: var(--text-secondary);
+    font-size: var(--type-small);
+    font-style: italic;
+  }
+
+  /* ─────── slide 5: layout ─────── */
+  .layout-frame {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    grid-template-rows: 84px 1fr;
+    gap: 0;
+    border: 1px solid var(--border-default);
+    background: var(--bg-base);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .layout-frame .lf-top {
+    grid-column: 1 / 3;
+    border-bottom: 1px solid var(--border-default);
+    display: flex; align-items: center; padding: 0 32px;
+    color: var(--text-secondary);
+    font-size: 18px; letter-spacing: 0.04em;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .layout-frame .lf-rail {
+    border-right: 1px solid var(--border-default);
+    padding: 32px;
+    color: var(--text-secondary);
+    font-size: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 2;
+  }
+  .layout-frame .lf-main {
+    padding: 32px;
+    color: var(--text-tertiary);
+    font-size: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.7;
+    display: flex; align-items: flex-end;
+    justify-content: space-between;
+  }
+  .layout-frame .lf-tag {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.06em;
+  }
+
+  .layout-legend {
+    display: flex; gap: 80px;
+    color: var(--text-secondary);
+    font-size: var(--type-small);
+  }
+  .layout-legend .k { color: var(--text-primary); font-weight: 500; }
+  .layout-legend .v { color: var(--text-secondary); margin-left: 10px; }
+
+  /* ─────── slide 6: top strip ─────── */
+  .stat-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0;
+    border-top: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+    padding: 30px 36px;
+    background: var(--bg-base);
+  }
+  .stat-strip .stat .label {
+    font-size: 16px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    font-weight: 500;
+  }
+  .stat-strip .stat .v {
+    font-size: 56px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+  .stat-strip .stat .delta {
+    margin-top: 10px;
+    font-size: 16px;
+    color: var(--text-tertiary);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .stat-notes {
+    display: flex; gap: 64px;
+    color: var(--text-secondary);
+    font-size: var(--type-small);
+  }
+  .stat-notes .k { color: var(--text-primary); font-weight: 500; margin-right: 12px; }
+
+  /* ─────── slide 7: left rail ─────── */
+  .rail-row {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 460px 1fr;
+    gap: 80px;
+    align-items: stretch;
+  }
+  .rail {
+    background: var(--bg-base);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 28px 0;
+    display: flex; flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .rail .r-head {
+    padding: 0 24px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .rail .r-head .mono-mark {
+    width: 28px; height: 28px; background: var(--ink); border-radius: 6px;
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-weight: 500; font-size: 16px;
+  }
+  .rail .r-head .name { font-size: 20px; font-weight: 500; }
+  .rail .r-list { padding: 12px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .rail .ch {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px;
+    border-radius: 6px;
+    font-size: 20px;
+  }
+  .rail .ch.sel { background: var(--bg-surface); }
+  .rail .ch .left { display: flex; align-items: center; gap: 12px; color: var(--text-primary); }
+  .rail .ch .left .hash { color: var(--text-tertiary); }
+  .rail .ch .badge {
+    background: var(--gray-pill);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 999px;
+    min-width: 24px; text-align: center;
+  }
+  .rail .ch .badge.zero { display: none; }
+  .rail .r-foot {
+    margin-top: auto;
+    padding: 16px 24px 8px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 16px; color: var(--text-secondary);
+  }
+  .rail .r-foot .live { display: flex; align-items: center; gap: 8px; }
+  .rail .r-foot .live .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  }
+  .rail .r-foot .settings { color: var(--text-tertiary); }
+
+  .rail-notes {
+    align-self: stretch;
+    display: flex; flex-direction: column;
+    gap: 28px;
+    justify-content: flex-start;
+    padding-top: 12px;
+  }
+  .rail-notes .note { display: flex; flex-direction: column; gap: 8px; }
+  .rail-notes .note .k {
+    font-size: var(--type-region);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+  .rail-notes .note .v {
+    font-size: 24px;
+    color: var(--text-primary);
+    line-height: 1.4;
+    max-width: 720px;
+  }
+
+  /* ─────── slide 8: five channels grid ─────── */
+  .ch-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+  }
+  .ch-grid .col {
+    padding: 0 32px;
+    border-left: 1px solid var(--border-subtle);
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .ch-grid .col:first-child { border-left: none; padding-left: 0; }
+  .ch-grid .col:last-child { padding-right: 0; }
+  .ch-grid .col .name {
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+  .ch-grid .col .name .hash { color: var(--text-tertiary); }
+  .ch-grid .col .shape {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .ch-grid .col .desc {
+    font-size: 19px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .ch-grid .col .mini {
+    margin-top: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--bg-base);
+    padding: 16px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    height: 200px;
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden;
+  }
+  .ch-grid .mini .row { display: flex; align-items: center; gap: 8px; }
+  .ch-grid .mini .bar { height: 8px; background: var(--bg-surface); border-radius: 2px; flex: 1; }
+  .ch-grid .mini .bar.short { flex: 0 0 60%; }
+  .ch-grid .mini .pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; padding: 2px 6px; border-radius: 4px;
+    background: var(--green-bg); color: var(--green);
+  }
+  .ch-grid .mini .pill.amber { background: var(--amber-bg); color: var(--amber); }
+  .ch-grid .mini .pill.gray { background: var(--gray-pill); color: var(--text-secondary); }
+  .ch-grid .mini .quote { border-left: 2px solid var(--border-default); padding-left: 8px; color: var(--text-tertiary); font-style: italic; }
+
+  /* ─────── slide 9: signals card ─────── */
+  .card-feed {
+    display: flex; flex-direction: column; gap: 12px;
+    flex: 1;
+  }
+  .signal-card {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px 24px;
+  }
+  .signal-card .meta {
+    display: flex; align-items: center; gap: 12px;
+    color: var(--text-secondary);
+    font-size: 16px;
+  }
+  .signal-card .meta .src {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+  }
+  .signal-card .meta .handle { color: var(--text-primary); font-weight: 500; }
+  .signal-card .meta .sep { color: var(--text-tertiary); }
+  .signal-card .body-line {
+    grid-column: 1 / 2;
+    font-size: 22px;
+    line-height: 1.55;
+    color: var(--text-primary);
+  }
+  .signal-card .matches {
+    grid-column: 1 / 2;
+    font-size: 16px;
+    color: var(--text-secondary);
+  }
+  .signal-card .matches .k { color: var(--text-tertiary); }
+  .signal-card .badge {
+    grid-row: 1 / 2;
+    grid-column: 2 / 3;
+    align-self: start;
+  }
+  .fit-pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .fit-pill.green { background: var(--green-bg); color: var(--green); }
+  .fit-pill.amber { background: var(--amber-bg); color: var(--amber); }
+  .fit-pill.gray { background: var(--gray-pill); color: var(--text-secondary); }
+  .fit-pill .dotmark {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+
+  .annot {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.06em;
+    line-height: 1.3;
+  }
+  .annot .l {
+    display: block;
+    width: 80px; height: 1px;
+    background: var(--text-tertiary);
+    margin: 8px 0;
+  }
+
+  /* ─────── slide 10: drafts/sent ─────── */
+  .two-up {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    flex: 1;
+  }
+  .col-stack { display: flex; flex-direction: column; gap: 16px; }
+  .col-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 12px;
+  }
+  .col-head .nm {
+    font-size: 28px; font-weight: 500; letter-spacing: -0.01em;
+  }
+  .col-head .nm .hash { color: var(--text-tertiary); }
+  .col-head .ct { font-size: 16px; color: var(--text-secondary); }
+
+  .draft-card {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .draft-card .quote {
+    border-left: 2px solid var(--border-default);
+    padding: 4px 0 4px 14px;
+    color: var(--text-secondary);
+    font-size: 18px;
+    line-height: 1.45;
+  }
+  .draft-card .actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .draft-card.muted { opacity: 0.85; }
+  .draft-card .sent-line {
+    color: var(--text-tertiary); font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 10px 18px;
+    border-radius: 6px;
+    line-height: 1;
+    border: 1px solid transparent;
+  }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn.ghost   { background: transparent; color: var(--text-primary); border-color: var(--border-default); }
+
+  /* ─────── slide 11: briefing + ask ─────── */
+  .briefing-card {
+    background: var(--bg-surface);
+    border-radius: 8px;
+    padding: 36px 40px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .briefing-card .today {
+    font-size: var(--type-region);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .briefing-card .date {
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .briefing-card p {
+    margin: 0;
+    font-size: 19px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    max-width: 100%;
+  }
+
+  .ask-stream {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .ask-stream .msg {
+    font-size: 18px;
+    line-height: 1.55;
+    padding: 12px 16px;
+    border-radius: 6px;
+    max-width: 92%;
+  }
+  .ask-stream .msg.user { align-self: flex-end; background: var(--bg-surface); }
+  .ask-stream .msg.bot  { align-self: flex-start; }
+  .ask-stream .msg sup { color: var(--text-secondary); font-size: 13px; font-weight: 500; }
+  .ask-stream .signed { font-size: 13px; color: var(--text-secondary); padding-left: 4px; }
+  .ask-stream .input {
+    margin-top: 8px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 14px;
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-tertiary); font-size: 16px;
+  }
+  .ask-stream .input .caret {
+    display: inline-block; width: 2px; height: 18px; background: var(--ink);
+    vertical-align: middle;
+  }
+
+  /* ─────── slide 12: lead card modal ─────── */
+  .modal-stage {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 580px;
+    gap: 48px;
+  }
+  .lead-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    padding: 0;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    display: flex; flex-direction: column;
+  }
+  .lead-modal .region {
+    padding: 16px 26px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .lead-modal .region:last-child { border-bottom: none; }
+  .lead-modal .region .label {
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .lead-modal .region .label .x { color: var(--text-tertiary); }
+  .lead-modal .src-meta {
+    color: var(--text-secondary); font-size: 14px; margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .lead-modal .quote {
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--text-primary);
+  }
+  .lead-modal .quote::before { content: "\201C"; color: var(--text-tertiary); margin-right: 2px; }
+  .lead-modal .quote::after  { content: "\201D"; color: var(--text-tertiary); margin-left: 2px; }
+  .lead-modal .view-orig {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--ink); font-weight: 500;
+  }
+  .lead-modal .assess-line {
+    color: var(--text-secondary); font-size: 14px; margin-bottom: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .lead-modal .assess-body {
+    font-size: 15px; line-height: 1.55; color: var(--text-primary);
+  }
+  .lead-modal .ev-head {
+    font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;
+  }
+  .lead-modal .ev-row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 9px 0;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 14px;
+  }
+  .lead-modal .ev-row .chev { color: var(--text-tertiary); font-family: monospace; }
+  .lead-modal .ev-row .doc { color: var(--text-primary); }
+  .lead-modal .ev-row .doc .slug { color: var(--text-secondary); }
+  .lead-modal .ev-row .score { font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); }
+  .lead-modal .draft-block {
+    border-left: 2px solid var(--ink);
+    padding: 4px 0 4px 16px;
+    color: var(--text-primary);
+    font-size: 15px; line-height: 1.55;
+  }
+  .lead-modal .grounded {
+    margin-top: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .lead-modal .grounded a { color: var(--ink); font-weight: 500; }
+  .lead-modal .actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding-top: 12px;
+  }
+
+  .modal-notes {
+    display: flex; flex-direction: column; gap: 36px;
+    justify-content: center;
+  }
+  .modal-notes .pull {
+    font-size: 30px;
+    line-height: 1.4;
+    letter-spacing: -0.012em;
+    color: var(--text-primary);
+  }
+  .modal-notes .pull em {
+    font-style: normal; font-weight: 500;
+  }
+  .modal-notes .pull .sub {
+    color: var(--text-secondary);
+    display: block;
+    margin-top: 14px;
+    font-size: 20px;
+    line-height: 1.5;
+  }
+
+  /* ─────── slide 13: evidence detail ─────── */
+  .evid-stage {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 64px;
+    flex: 1;
+  }
+  .evid-stage .left { display: flex; flex-direction: column; gap: 20px; }
+  .evid-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 28px 32px;
+  }
+  .evid-card .head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 18px;
+  }
+  .evid-card .head .nm { font-weight: 500; font-size: 18px; }
+  .evid-card .head .nm .slug { color: var(--text-secondary); }
+  .evid-card .head .score { font-family: 'JetBrains Mono', monospace; color: var(--green); font-size: 16px; }
+  .evid-card .snippet {
+    background: var(--bg-surface);
+    border-radius: 6px;
+    padding: 22px 24px;
+    font-size: 18px;
+    line-height: 1.7;
+    color: var(--text-primary);
+  }
+  .evid-card .foot {
+    margin-top: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .evid-card .rerun {
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .evid-prin { display: flex; flex-direction: column; gap: 32px; justify-content: center; }
+  .evid-prin .item {
+    display: grid; grid-template-columns: 56px 1fr; gap: 20px;
+  }
+  .evid-prin .item .n {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-tertiary);
+    font-size: 16px;
+    padding-top: 8px;
+  }
+  .evid-prin .item .hd { font-size: 26px; font-weight: 500; letter-spacing: -0.01em; margin-bottom: 6px; }
+  .evid-prin .item .bd { color: var(--text-secondary); font-size: 18px; line-height: 1.55; }
+
+  /* ─────── slide 14: color ─────── */
+  .palette {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+  }
+  .swatch {
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    background: var(--bg-base);
+  }
+  .swatch .chip { height: 130px; }
+  .swatch .info { padding: 16px 18px; }
+  .swatch .info .nm { font-size: 18px; font-weight: 500; }
+  .swatch .info .hex { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+  .swatch .info .role { font-size: 13px; color: var(--text-tertiary); margin-top: 8px; line-height: 1.4; }
+  .swatch.outlined .chip { border-bottom: 1px solid var(--border-subtle); }
+
+  /* ─────── slide 15: type + spacing ─────── */
+  .type-stage {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 64px;
+  }
+  .type-list {
+    display: flex; flex-direction: column;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .type-list .row {
+    display: grid;
+    grid-template-columns: 80px 110px 1fr;
+    gap: 20px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    align-items: baseline;
+  }
+  .type-list .row .px {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    font-size: 15px;
+  }
+  .type-list .row .wt {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+  }
+  .type-list .row .sample { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .space-stage { display: flex; flex-direction: column; gap: 28px; }
+  .space-stage .lbl {
+    font-size: var(--type-region);
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .space-bars { display: flex; align-items: flex-end; gap: 10px; height: 100px; }
+  .space-bars .b { background: var(--ink); border-radius: 1px; }
+  .space-bars .b1 { width: 4px; height: 4px; }
+  .space-bars .b2 { width: 8px; height: 8px; }
+  .space-bars .b3 { width: 12px; height: 12px; }
+  .space-bars .b4 { width: 16px; height: 16px; }
+  .space-bars .b5 { width: 24px; height: 24px; }
+  .space-bars .b6 { width: 32px; height: 32px; }
+  .space-bars .b7 { width: 48px; height: 48px; }
+  .space-bars .b8 { width: 64px; height: 64px; }
+  .space-bars .lab {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    align-self: flex-start;
+    padding-top: 6px;
+  }
+  .space-bars .unit {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .space-bars .unit .l {
+    font-family: 'JetBrains Mono', monospace; color: var(--text-tertiary); font-size: 12px;
+  }
+
+  .motion-list { display: flex; flex-direction: column; gap: 14px; }
+  .motion-list .row { display: flex; gap: 16px; font-size: 18px; color: var(--text-primary); }
+  .motion-list .row .k { color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 14px; min-width: 100px; padding-top: 4px;}
+  .motion-list .row.no { color: var(--text-tertiary); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .motion-list .row.no .k { text-decoration: none; }
+
+  .agents-row {
+    display: flex; gap: 32px; align-items: center;
+  }
+  .agent-mark {
+    width: 56px; height: 56px; border-radius: 12px;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 500; font-size: 22px;
+  }
+  .agent-block {
+    display: flex; flex-direction: column; gap: 10px; align-items: center;
+  }
+  .agent-block .nm { font-size: 16px; font-weight: 500; }
+  .agent-block .role { font-size: 13px; color: var(--text-secondary); }
+
+  /* ─────── slide 16: done ─────── */
+  .done-list { display: flex; flex-direction: column; }
+  .done-list .row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 24px;
+    padding: 28px 0;
+    border-top: 1px solid var(--border-subtle);
+    align-items: baseline;
+  }
+  .done-list .row:last-child { border-bottom: 1px solid var(--border-subtle); }
+  .done-list .row .n {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-tertiary);
+    font-size: 18px;
+  }
+  .done-list .row .v {
+    font-size: 30px;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+  .done-list .row .v em { font-style: normal; font-weight: 500; color: var(--ink); }
+  .done-coda {
+    margin-top: 24px;
+    font-size: 24px;
+    color: var(--text-secondary);
+    max-width: 1300px;
+    line-height: 1.5;
+  }
+  .done-coda em { font-style: normal; font-weight: 500; color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- ───────────── 1. TITLE ───────────── -->
+  <section data-label="01 Burrow" class="s-title">
+    <div class="frame">
+      <div class="topbar">
+        <span class="brand"><span class="dot"></span>Burrow</span>
+        <span>Frontend design brief · v1 · for build week</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:32px;margin-top:120px;">
+        <div class="eyebrow">Frontend design brief</div>
+        <div class="lockup">
+          <div class="dot-stack">
+            <span style="background:var(--c-scout)"></span>
+            <span style="background:var(--c-analyst)"></span>
+            <span style="background:var(--c-writer)"></span>
+            <span style="background:var(--c-watcher)"></span>
+            <span style="background:var(--c-chief)"></span>
+          </div>
+          <div class="wordmark">Burrow</div>
+        </div>
+      </div>
+
+      <div class="strap">
+        A workspace for a founder doing growth.<br/>
+        Five channels, a quiet counter strip, one modal that <em>has to feel like a document, not a chatbot output.</em>
+      </div>
+
+      <div class="meta-row">
+        <div class="group"><span>Audience</span><span class="v">Design + eng, build week kickoff</span></div>
+        <div class="group"><span>Output</span><span class="v">Desktop only, 1280 × 800 min</span></div>
+        <div class="group"><span>North stars</span><span class="v">Linear · Stripe · Vercel · Things</span></div>
+        <div class="group"><span>Forbidden</span><span class="v">Gradients, sparkles, glow</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 2. WHAT IT IS ───────────── -->
+  <section data-label="02 What it is">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>01 · What it is</span></div>
+      <div class="eyebrow">The one-paragraph version</div>
+      <p class="lede" style="margin:0;">
+        Burrow is a <span class="mark">workspace for a founder doing growth.</span>
+        It looks like a stripped-down Linear or a quieter Slack.
+        Five channels down the left. A live counter strip at the top.
+        A main pane that's mostly one thing at a time.
+        Click a signal, get a modal that explains <span class="mark">why</span> this lead matters with real citations.
+        <span class="quiet">The whole thing should feel like a calm professional tool — not a dashboard, not a chatbot, not a hype site. The user should feel like they're reading a clean inbox, not playing a game.</span>
+      </p>
+
+      <div class="closing">
+        <span>Calm</span>
+        <span>Professional</span>
+        <span>Trustworthy</span>
+        <span>Boring, in the way good tools are boring</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 3. TASTE NORTH STAR ───────────── -->
+  <section data-label="03 Taste north star">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>02 · Taste north star</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Aim for the room these tools live in.</h2>
+        <div class="small" style="max-width:480px; text-align:right;">If a screenshot of your screen wouldn't sit next to these in a changelog post, the screen isn't done.</div>
+      </div>
+
+      <div class="star-grid">
+        <div class="star-card">
+          <div class="num">01</div>
+          <div class="name">Linear</div>
+          <div class="note">Type, density, the way nothing shouts. Every list reads like a document.</div>
+        </div>
+        <div class="star-card">
+          <div class="num">02</div>
+          <div class="name">Stripe Dashboard</div>
+          <div class="note">Restraint. Generous spacing. The feeling that someone cared about each row.</div>
+        </div>
+        <div class="star-card">
+          <div class="num">03</div>
+          <div class="name">Vercel Dashboard</div>
+          <div class="note">Flat, monochrome-leaning. No decoration that isn't load-bearing.</div>
+        </div>
+        <div class="star-card">
+          <div class="num">04</div>
+          <div class="name">Things 3</div>
+          <div class="note">Calm. Quiet. Paper-like. The interface gets out of your way.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 4. WHAT IT ISN'T ───────────── -->
+  <section data-label="04 What it isn't">
+    <div class="frame compact">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>03 · What it isn't</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Fifteen things we will not do.</h2>
+        <div class="small" style="max-width:520px; text-align:right;">If you find yourself reaching for one of these, you're solving the wrong problem. If you catch yourself thinking <em>"this needs a little more pop,"</em> delete something instead.</div>
+      </div>
+
+      <div class="anti">
+        <div class="item"><span class="n">01</span>Purple-to-blue gradients</div>
+        <div class="item"><span class="n">02</span>Sparkle emoji ✨ 🪄 🤖</div>
+        <div class="item"><span class="n">03</span>"Powered by AI" badges</div>
+        <div class="item"><span class="n">04</span>Glowing borders, neon outlines</div>
+        <div class="item"><span class="n">05</span>Robot avatars with anime hair</div>
+        <div class="item"><span class="n">06</span>Three-bouncing-dot "thinking…"</div>
+        <div class="item"><span class="n">07</span>Typewriter text in dashboards</div>
+        <div class="item"><span class="n">08</span>Glassmorphism, frosted layers</div>
+        <div class="item"><span class="n">09</span>Confetti, particle success toasts</div>
+        <div class="item"><span class="n">10</span>Stock illustrations of brains</div>
+        <div class="item"><span class="n">11</span>ALL-CAPS BUTTON LABELS</div>
+        <div class="item"><span class="n">12</span>Emoji in agent messages</div>
+        <div class="item"><span class="n">13</span>More than two font weights</div>
+        <div class="item"><span class="n">14</span>Animated mesh-gradient backgrounds</div>
+        <div class="item"><span class="n">15</span>Buttons named "Ask Burrow Anything"</div>
+      </div>
+
+      <div class="anti-foot">Solid fills only. Sentence case everywhere. Show, don't tell.</div>
+    </div>
+  </section>
+
+  <!-- ───────────── 5. LAYOUT ───────────── -->
+  <section data-label="05 Layout">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>04 · Layout</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Three regions. Fixed for the entire app.</h2>
+        <div class="small" style="max-width:440px; text-align:right;">No tabs at the top. No breadcrumbs. Minimum viewport 1280 × 800. Below 1100, a quiet message: "Burrow needs a wider window."</div>
+      </div>
+
+      <div class="layout-frame">
+        <div class="lf-top">top strip — six live counters · 56 px</div>
+        <div class="lf-rail">
+          left rail · 220 px<br/><br/>
+          # signals<br/>
+          # drafts<br/>
+          # sent<br/>
+          # briefing<br/>
+          # ask<br/><br/>
+          ─ settings<br/>
+          ● Live
+        </div>
+        <div class="lf-main">
+          <span>main pane — channel feed,<br/>lead card modal, or ask-bar layout</span>
+          <span style="text-align:right;">page margin 32 px<br/>card padding 16 px</span>
+        </div>
+
+      </div>
+
+      <div class="layout-legend">
+        <div><span class="k">Top strip</span><span class="v">56 px, full width, 1 px bottom border</span></div>
+        <div><span class="k">Left rail</span><span class="v">220 px, channels + footer status</span></div>
+        <div><span class="k">Main pane</span><span class="v">channel content, full bleed</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 6. LIVE COUNTERS ───────────── -->
+  <section data-label="06 Live counters">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>05 · Live counters</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Six numbers, quietly.</h2>
+        <div class="small" style="max-width:480px; text-align:right;">Updates arrive via WebSocket. The number changes, that's it — no flash, no pulse, no ticker animation. 200 ms opacity crossfade only if you must.</div>
+      </div>
+
+      <div class="stat-strip">
+        <div class="stat"><div class="label">Signals seen</div><div class="v">1,247</div><div class="delta">+ 18 last hour</div></div>
+        <div class="stat"><div class="label">High-fit leads</div><div class="v">12</div><div class="delta">+ 3 today</div></div>
+        <div class="stat"><div class="label">Drafts pending</div><div class="v">4</div><div class="delta">writer · q</div></div>
+        <div class="stat"><div class="label">Approved</div><div class="v">8</div><div class="delta">today</div></div>
+        <div class="stat"><div class="label">Avg time-to-draft</div><div class="v">47s</div><div class="delta">p50 rolling</div></div>
+        <div class="stat"><div class="label">Grounded %</div><div class="v">98%</div><div class="delta">last 100 drafts</div></div>
+      </div>
+
+      <div class="stat-notes">
+        <div><span class="k">Layout</span> left-aligned, evenly spaced, single horizontal bar</div>
+        <div><span class="k">Type</span> 11 px label / 18 px primary, weight 500</div>
+        <div><span class="k">Border</span> 1 px bottom only — no background fill, no chrome</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 7. LEFT RAIL ───────────── -->
+  <section data-label="07 Left rail">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>06 · Left rail</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Five channels. A status dot. That's it.</h2>
+        <div class="small" style="max-width:440px; text-align:right;">Selected state is a subtle surface fill. No left-border accent. No bold weight. Just the fill.</div>
+      </div>
+
+      <div class="rail-row">
+        <div class="rail">
+          <div class="r-head">
+            <div class="mono-mark">B</div>
+            <div class="name">Burrow</div>
+          </div>
+          <div class="r-list">
+            <div class="ch sel"><span class="left"><span class="hash">#</span>signals</span><span class="badge">12</span></div>
+            <div class="ch"><span class="left"><span class="hash">#</span>drafts</span><span class="badge">4</span></div>
+            <div class="ch"><span class="left"><span class="hash">#</span>sent</span><span class="badge zero">0</span></div>
+            <div class="ch"><span class="left"><span class="hash">#</span>briefing</span><span class="badge">1</span></div>
+            <div class="ch"><span class="left"><span class="hash">#</span>ask</span><span class="badge zero">0</span></div>
+          </div>
+          <div class="r-foot">
+            <span class="settings">Settings</span>
+            <span class="live"><span class="dot"></span>Live</span>
+          </div>
+        </div>
+
+        <div class="rail-notes">
+          <div class="note">
+            <div class="k">Channel row</div>
+            <div class="v">14 px label · 36 px tall · 12 px horizontal padding · small unread badge on the right.</div>
+          </div>
+          <div class="note">
+            <div class="k">Selected</div>
+            <div class="v">Subtle surface fill only. No accent stripe. No weight change. Just the fill.</div>
+          </div>
+          <div class="note">
+            <div class="k">Footer status</div>
+            <div class="v">6 px dot — green for active, gray for paused. Word "Live" or "Paused" in 11 px secondary text.</div>
+          </div>
+          <div class="note">
+            <div class="k">Settings</div>
+            <div class="v">A placeholder link. No settings page exists. This is a hackathon demo.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 8. FIVE CHANNELS ───────────── -->
+  <section data-label="08 Five channels">
+    <div class="frame compact">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>07 · Five channels</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Each channel has its own feed shape.</h2>
+        <div class="small" style="max-width:440px; text-align:right;">Pick the one that fits the content. Don't homogenize.</div>
+      </div>
+
+      <div class="ch-grid">
+        <div class="col">
+          <div>
+            <div class="shape">reverse-chronological cards</div>
+            <div class="name" style="margin-top:8px;"><span class="hash">#</span>signals</div>
+          </div>
+          <div class="desc">What Scout pulled from the firehose. Cards update in place when the Analyst attaches a fit score.</div>
+          <div class="mini">
+            <div class="row"><span class="pill">reddit</span><span class="pill green">0.84</span></div>
+            <div class="bar"></div>
+            <div class="bar short"></div>
+            <div class="row" style="margin-top:8px;"><span class="pill">x</span><span class="pill amber">0.71</span></div>
+            <div class="bar"></div>
+            <div class="bar short"></div>
+          </div>
+        </div>
+        <div class="col">
+          <div>
+            <div class="shape">cards + approve / reject</div>
+            <div class="name" style="margin-top:8px;"><span class="hash">#</span>drafts</div>
+          </div>
+          <div class="desc">A draft message previewed in a quoted block. Two buttons, right-aligned. Approve animates out.</div>
+          <div class="mini">
+            <div class="row"><span class="pill">reddit</span><span class="pill green">0.84</span></div>
+            <div class="quote">"Been there — at 200 M vectors the bill curve gets brutal…"</div>
+            <div class="row" style="margin-top:auto; justify-content:flex-end;">
+              <span style="font-size:11px; padding:3px 8px; border:1px solid var(--border-default); border-radius:4px;">Reject</span>
+              <span style="font-size:11px; padding:3px 8px; background:var(--ink); color:#fff; border-radius:4px;">Approve</span>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div>
+            <div class="shape">past-tense cards · 90 % opacity</div>
+            <div class="name" style="margin-top:8px;"><span class="hash">#</span>sent</div>
+          </div>
+          <div class="desc">No action buttons. A single secondary line: "sent · 2m ago." Muted. Past tense in tone.</div>
+          <div class="mini" style="opacity:0.85;">
+            <div class="row"><span class="pill gray">reddit</span><span class="pill gray">0.84</span></div>
+            <div class="bar"></div>
+            <div class="bar short"></div>
+            <div style="margin-top:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-tertiary);">sent · 8:32 AM</div>
+          </div>
+        </div>
+        <div class="col">
+          <div>
+            <div class="shape">prose, not a feed</div>
+            <div class="name" style="margin-top:8px;"><span class="hash">#</span>briefing</div>
+          </div>
+          <div class="desc">One large card with paragraphs of summary. Chief of Staff's voice. No bullets.</div>
+          <div class="mini" style="background:var(--bg-surface);">
+            <div style="font-size:10px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.08em;">Today</div>
+            <div style="font-size:16px; font-weight:500;">Thu, Aug 14</div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar short"></div>
+          </div>
+        </div>
+        <div class="col">
+          <div>
+            <div class="shape">chat — input at bottom</div>
+            <div class="name" style="margin-top:8px;"><span class="hash">#</span>ask</div>
+          </div>
+          <div class="desc">The only chat-shaped channel. Streaming text allowed. Inline numeric citations open the lead card.</div>
+          <div class="mini">
+            <div class="row" style="justify-content:flex-end;"><span class="quote" style="border:none; padding:6px 8px; background:var(--bg-surface); border-radius:4px; font-style:normal;">Why Initech?</span></div>
+            <div class="bar"></div>
+            <div class="bar short"></div>
+            <div style="margin-top:auto; height:18px; border-top:1px solid var(--border-subtle); padding-top:6px; color:var(--text-tertiary); font-size:11px;">Ask…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 9. #signals ───────────── -->
+  <section data-label="09 Signals">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>08 · #signals</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">The card is the atom.</h2>
+        <div class="small" style="max-width:480px; text-align:right;">Card height varies, 60–120 px. The fit score badge is the only colored element. The whole card is clickable.</div>
+      </div>
+
+      <div class="card-feed">
+        <div class="signal-card">
+          <div class="meta">
+            <span class="src">REDDIT</span>
+            <span class="handle">u/infra_will</span>
+            <span class="sep">·</span>
+            <span>r/LocalLLaMA</span>
+            <span class="sep">·</span>
+            <span>4m ago</span>
+          </div>
+          <div class="badge"><span class="fit-pill green"><span class="dotmark"></span>0.84</span></div>
+          <div class="body-line">"Anyone else getting destroyed by Pinecone pricing? We're 14 people, ~200 M vectors, just got our bill and I'm seriously considering moving to Qdrant. What am I missing?"</div>
+          <div class="matches"><span class="k">matches:</span> Initech win · public reply</div>
+        </div>
+
+        <div class="signal-card">
+          <div class="meta">
+            <span class="src">HACKER NEWS</span>
+            <span class="handle">throwaway42</span>
+            <span class="sep">·</span>
+            <span>13m ago</span>
+          </div>
+          <div class="badge"><span class="fit-pill amber"><span class="dotmark"></span>0.71</span></div>
+          <div class="body-line">"Show HN: We hit the limit on our hosted vector DB and had to rebuild our retrieval layer in a weekend. Here's what we learned about cold-start costs and re-indexing."</div>
+          <div class="matches"><span class="k">matches:</span> retrieval pattern · medium fit</div>
+        </div>
+
+        <div class="signal-card">
+          <div class="meta">
+            <span class="src">X</span>
+            <span class="handle">@ratchet_ai</span>
+            <span class="sep">·</span>
+            <span>27m ago</span>
+          </div>
+          <div class="badge"><span style="font-size:14px; color:var(--text-tertiary);">Analyzing…</span></div>
+          <div class="body-line">"feels like every founder I talk to this week is quietly migrating off the same three vendors. not gonna name names but you know who you are."</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 10. DRAFTS + SENT ───────────── -->
+  <section data-label="10 Drafts and sent">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>09 · #drafts and #sent</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Approve. Slide right. Move on.</h2>
+        <div class="small" style="max-width:520px; text-align:right;">300 ms slide + fade out of #drafts, then appear at the top of #sent. Total. Then it stops. No celebration.</div>
+      </div>
+
+      <div class="two-up">
+        <div class="col-stack">
+          <div class="col-head"><span class="nm"><span class="hash">#</span>drafts</span><span class="ct">4 pending</span></div>
+          <div class="draft-card">
+            <div class="meta" style="display:flex;gap:12px;align-items:center;color:var(--text-secondary);font-size:14px;">
+              <span class="mono" style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-tertiary);">REDDIT</span>
+              <span style="color:var(--text-primary); font-weight:500;">u/infra_will</span>
+              <span style="color:var(--text-tertiary);">·</span>
+              <span>4m ago</span>
+              <span style="margin-left:auto;"><span class="fit-pill green"><span class="dotmark"></span>0.84</span></span>
+            </div>
+            <div class="quote">Been there — at 200 M vectors the Pinecone bill curve gets brutal. Self-hosted Qdrant is technically fine but the cluster ops eat ~1 eng-week/month if no one's done it before.</div>
+            <div class="actions"><span class="btn ghost">Reject</span><span class="btn primary">Approve, send</span></div>
+          </div>
+          <div class="draft-card">
+            <div class="meta" style="display:flex;gap:12px;align-items:center;color:var(--text-secondary);font-size:14px;">
+              <span class="mono" style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-tertiary);">HN</span>
+              <span style="color:var(--text-primary); font-weight:500;">throwaway42</span>
+              <span style="color:var(--text-tertiary);">·</span>
+              <span>13m ago</span>
+              <span style="margin-left:auto;"><span class="fit-pill amber"><span class="dotmark"></span>0.71</span></span>
+            </div>
+            <div class="quote">Curious which three vendors — we've been tracking the same migration pattern and could share what we're seeing if useful.</div>
+            <div class="actions"><span class="btn ghost">Reject</span><span class="btn primary">Approve, send</span></div>
+          </div>
+        </div>
+
+        <div class="col-stack">
+          <div class="col-head"><span class="nm"><span class="hash">#</span>sent</span><span class="ct">8 today</span></div>
+          <div class="draft-card muted">
+            <div class="meta" style="display:flex;gap:12px;align-items:center;color:var(--text-secondary);font-size:14px;">
+              <span class="mono" style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-tertiary);">REDDIT</span>
+              <span style="color:var(--text-primary); font-weight:500;">u/gpu_curious</span>
+              <span style="color:var(--text-tertiary);">·</span>
+              <span>8:32 AM</span>
+              <span style="margin-left:auto;"><span class="fit-pill gray"><span class="dotmark"></span>0.82</span></span>
+            </div>
+            <div class="quote">If you're seeing latency spikes on cold queries that's almost always the index serialization step…</div>
+            <div class="sent-line">sent · 8:32 AM</div>
+          </div>
+          <div class="draft-card muted">
+            <div class="meta" style="display:flex;gap:12px;align-items:center;color:var(--text-secondary);font-size:14px;">
+              <span class="mono" style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-tertiary);">X</span>
+              <span style="color:var(--text-primary); font-weight:500;">@beta_at_dusk</span>
+              <span style="color:var(--text-tertiary);">·</span>
+              <span>yesterday</span>
+              <span style="margin-left:auto;"><span class="fit-pill gray"><span class="dotmark"></span>0.79</span></span>
+            </div>
+            <div class="quote">We hit the same wall around 60 M vectors — happy to compare notes on what we tried before rebuilding.</div>
+            <div class="sent-line">approved · yesterday, 4:11 PM</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 11. BRIEFING + ASK ───────────── -->
+  <section data-label="11 Briefing and ask">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>10 · #briefing and #ask</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Two channels that aren't feeds.</h2>
+        <div class="small" style="max-width:480px; text-align:right;">Briefing is prose. Ask is chat — the only place streaming text is allowed, the only place inline citations show up.</div>
+      </div>
+
+      <div class="two-up">
+        <div class="col-stack">
+          <div class="col-head"><span class="nm"><span class="hash">#</span>briefing</span><span class="ct">today</span></div>
+          <div class="briefing-card">
+            <div class="today">Today</div>
+            <div class="date">Thursday, August 14</div>
+            <p>Pinecone pricing complaints continued to compound on Reddit overnight — three new posts from teams in our ICP band, including one from a former Initech-adjacent founder who explicitly named the same trigger we wedge against.</p>
+            <p>Watcher flagged that a competitor shipped a "self-host in one command" feature yesterday; expect this to come up in conversations this week. Two drafts are queued for your morning review.</p>
+          </div>
+          <div class="micro" style="border-top:1px solid var(--border-subtle); padding-top:14px;">Earlier — Aug 13, Aug 12, Aug 11 ›</div>
+        </div>
+
+        <div class="col-stack">
+          <div class="col-head"><span class="nm"><span class="hash">#</span>ask</span><span class="ct">chief of staff</span></div>
+          <div class="ask-stream" style="min-height:480px;">
+            <div class="msg user">Why is Initech showing up in so many matches lately?</div>
+            <div class="msg bot">Three reasons: the team-size band is identical to four new signals this week, the Pinecone trigger keeps appearing verbatim<sup>1</sup>, and your won_deals corpus puts that exact wedge in the top two retrievals nine times out of ten<sup>2</sup>.<br/><span class="signed">— Chief of Staff</span></div>
+            <div class="msg user">Show me which retrievals.</div>
+            <div class="msg bot">Opening the lead card for u/infra_will, scrolled to Evidence<span style="display:inline-block;width:2px;height:14px;background:var(--ink);vertical-align:middle;margin-left:2px;"></span></div>
+            <div class="input"><span>Ask Chief of Staff…</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 12. LEAD CARD MODAL ───────────── -->
+  <section data-label="12 Lead card modal">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>11 · The lead card modal</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">The centerpiece.</h2>
+        <div class="small" style="max-width:480px; text-align:right;">The whole pitch lives or dies on whether this feels like a trustworthy document — or like a chatbot output. Spend disproportionate time here.</div>
+      </div>
+
+      <div class="modal-stage">
+        <div class="lead-modal">
+          <div class="region">
+            <div class="label"><span>Source</span><span class="x">✕</span></div>
+            <div class="src-meta">REDDIT · u/infra_will · r/LocalLLaMA · 4m ago</div>
+            <div class="quote">Anyone else getting destroyed by Pinecone pricing? We're 14 people, ~200 M vectors, just got our bill and I'm seriously considering moving to Qdrant…</div>
+            <div class="view-orig">View original →</div>
+          </div>
+          <div class="region">
+            <div class="label"><span>Assessment</span></div>
+            <div class="assess-line">fit 0.84 · public reply</div>
+            <div class="assess-body">Matches Initech pattern (won): same team-size band, same Pinecone trigger, same "don't want to babysit infra" signal — which is exactly the wedge we used to close them.</div>
+          </div>
+          <div class="region">
+            <div class="label"><span>Evidence</span></div>
+            <div class="ev-head">3 retrievals · click any to expand</div>
+            <div class="ev-row"><span class="chev">▸</span><span class="doc">won_deal <span class="slug">· Initech</span></span><span class="score">0.89</span></div>
+            <div class="ev-row"><span class="chev">▸</span><span class="doc">lost_deal <span class="slug">· Acme</span></span><span class="score">0.71</span></div>
+            <div class="ev-row"><span class="chev">▸</span><span class="doc">brand_guide <span class="slug">· ICP definition</span></span><span class="score">0.83</span></div>
+          </div>
+          <div class="region">
+            <div class="label"><span>Draft</span></div>
+            <div class="draft-block">Been there — at 200 M vectors the Pinecone bill curve gets brutal. Self-hosted Qdrant is technically fine at your scale but cluster ops realistically eat ~1 eng-week/month. We costed it out for a team your size recently, happy to share the spreadsheet.</div>
+            <div class="grounded">Grounded in: brand_guide voice (0.81), Initech proven message (0.79). <a>Show evidence →</a></div>
+            <div class="actions"><span class="btn ghost">Reject</span><span class="btn primary">Approve, send</span></div>
+          </div>
+        </div>
+
+        <div class="modal-notes">
+          <div class="pull">
+            720 px wide. Centered. Inner region scrolls.
+            <span class="sub">Slides up from below, 200 ms ease-out. Page dims to 40 % overlay. ESC or click-out to close.</span>
+          </div>
+          <div class="pull">
+            Region labels are <em>the one place</em> uppercase is allowed.
+            <span class="sub">11 px, letterspaced 0.05 em. Source · Assessment · Evidence · Draft. Thin 1 px dividers between.</span>
+          </div>
+          <div class="pull">
+            Quietly at the bottom: "What changed since this was scored?"
+            <span class="sub">Re-runs retrieval against current brain state. The data flywheel, made visible.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 13. EVIDENCE ───────────── -->
+  <section data-label="13 Evidence">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>12 · Evidence</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">Where we close the trust gap.</h2>
+        <div class="small" style="max-width:520px; text-align:right;">Treat this region as a document, not a UI element. Read like a footnote in a well-typeset book.</div>
+      </div>
+
+      <div class="evid-stage">
+        <div class="left">
+          <div class="eyebrow">Evidence row — expanded</div>
+          <div class="evid-card">
+            <div class="head">
+              <div class="nm">won_deal <span class="slug">· Initech</span></div>
+              <div class="score">rank 1 · 0.89</div>
+            </div>
+            <div class="snippet">"…the wedge that closed Initech was their explicit complaint about Pinecone pricing on a 14-person team with ~200 M vectors. They didn't want to self-host. They didn't want to babysit infra. They wanted someone else to own the cluster."</div>
+            <div class="foot">from /won_deals/initech.md · indexed 2 days ago · rank 1 of 5</div>
+            <div class="rerun">Re-run this query →</div>
+          </div>
+        </div>
+
+        <div class="evid-prin">
+          <div class="item">
+            <div class="n">01</div>
+            <div>
+              <div class="hd">The actual retrieved text.</div>
+              <div class="bd">Not a paraphrase. Not a summary. The literal chunk the retriever returned, in body weight, in a quoted block.</div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="n">02</div>
+            <div>
+              <div class="hd">Document, indexed-when, rank.</div>
+              <div class="bd">Source path, indexed-at date, rank in the result set. Monospace. So a skeptical founder can verify it.</div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="n">03</div>
+            <div>
+              <div class="hd">Re-run, anytime.</div>
+              <div class="bd">A small link. Re-runs the query against the current corpus and shows what would rank differently now.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 14. COLOR ───────────── -->
+  <section data-label="14 Color">
+    <div class="frame compact">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>13 · Color</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">A deliberately small palette.</h2>
+        <div class="small" style="max-width:520px; text-align:right;">Neutrals do 90 % of the work. Two accents. Four semantic colors, each with one job. Dark mode mandatory; tested every screen.</div>
+      </div>
+
+      <div class="eyebrow">Neutrals</div>
+      <div class="palette" style="flex:0;">
+        <div class="swatch outlined"><div class="chip" style="background:#FAFAF8;"></div><div class="info"><div class="nm">bg-base</div><div class="hex">#FAFAF8</div><div class="role">Page background. Warm off-white.</div></div></div>
+        <div class="swatch outlined"><div class="chip" style="background:#F3F2EE;"></div><div class="info"><div class="nm">bg-surface</div><div class="hex">#F3F2EE</div><div class="role">Cards, lifted surfaces, selected channel fill.</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#1A1816;"></div><div class="info"><div class="nm">text-primary</div><div class="hex">#1A1816</div><div class="role">Body text. Never pure black.</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#87837B;"></div><div class="info"><div class="nm">text-secondary</div><div class="hex">#87837B</div><div class="role">Labels, metadata, captions.</div></div></div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:8px;">Accents and semantics</div>
+      <div class="palette" style="flex:0;">
+        <div class="swatch"><div class="chip" style="background:#16213B;"></div><div class="info"><div class="nm">ink</div><div class="hex">#16213B</div><div class="role">Primary buttons, selected channel, cursor.</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#2D7D5F;"></div><div class="info"><div class="nm">green</div><div class="hex">#2D7D5F</div><div class="role">Fit ≥ 0.8 badge. Live dot. That's it.</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#B08338;"></div><div class="info"><div class="nm">amber</div><div class="hex">#B08338</div><div class="role">Fit 0.6 – 0.8 badge. That's it.</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#0F0E0D;"></div><div class="info"><div class="nm">dark-bg</div><div class="hex">#0F0E0D</div><div class="role">Dark mode base. Not pure black.</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 15. TYPE + SPACING ───────────── -->
+  <section data-label="15 Type and spacing">
+    <div class="frame compact">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>14 · Type, spacing, agents</span></div>
+      <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+        <h2 class="title">One typeface. Two weights. Eight spacing values.</h2>
+        <div class="small" style="max-width:480px; text-align:right;">Inter. 400 and 500, never 700. Heavy weights read as marketing site, not as tool. Spacing increments are picked, not free-handed.</div>
+      </div>
+
+      <div class="type-stage">
+        <div class="type-list">
+          <div class="row"><span class="px">11 px</span><span class="wt">500 / CAPS</span><span class="sample" style="font-size:11px; font-weight:500; letter-spacing:0.10em; text-transform:uppercase;">REGION LABEL — SOURCE</span></div>
+          <div class="row"><span class="px">12 px</span><span class="wt">400</span><span class="sample" style="font-size:14px; color:var(--text-secondary);">u/infra_will · r/LocalLLaMA · 4m ago</span></div>
+          <div class="row"><span class="px">13 px</span><span class="wt">500</span><span class="sample" style="font-size:15px; font-weight:500;">Approve, send</span></div>
+          <div class="row"><span class="px">14 px</span><span class="wt">400</span><span class="sample" style="font-size:16px;">#signals</span></div>
+          <div class="row"><span class="px">15 px</span><span class="wt">400</span><span class="sample" style="font-size:18px;">Anyone else getting destroyed by Pinecone pricing</span></div>
+          <div class="row"><span class="px">18 px</span><span class="wt">500</span><span class="sample" style="font-size:22px; font-weight:500;">1,247</span></div>
+          <div class="row"><span class="px">22 px</span><span class="wt">500</span><span class="sample" style="font-size:26px; font-weight:500;">Source</span></div>
+          <div class="row"><span class="px">28 px</span><span class="wt">500</span><span class="sample" style="font-size:32px; font-weight:500; letter-spacing:-0.01em;">Thursday, August 14</span></div>
+        </div>
+
+        <div class="space-stage">
+          <div>
+            <div class="lbl" style="margin-bottom:14px;">Spacing scale (px)</div>
+            <div class="space-bars">
+              <div class="unit"><div class="b b1"></div><div class="l">4</div></div>
+              <div class="unit"><div class="b b2"></div><div class="l">8</div></div>
+              <div class="unit"><div class="b b3"></div><div class="l">12</div></div>
+              <div class="unit"><div class="b b4"></div><div class="l">16</div></div>
+              <div class="unit"><div class="b b5"></div><div class="l">24</div></div>
+              <div class="unit"><div class="b b6"></div><div class="l">32</div></div>
+              <div class="unit"><div class="b b7"></div><div class="l">48</div></div>
+              <div class="unit"><div class="b b8"></div><div class="l">64</div></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="lbl" style="margin-bottom:14px;">Motion</div>
+            <div class="motion-list">
+              <div class="row"><span class="k">150 ms</span><span>Fade-in on initial render</span></div>
+              <div class="row"><span class="k">200 ms</span><span>Modal slide-in, counter crossfade</span></div>
+              <div class="row"><span class="k">300 ms</span><span>Draft cards sliding out on approve</span></div>
+              <div class="row no"><span class="k">—</span><span>Bouncing, springs, overshoot</span></div>
+              <div class="row no"><span class="k">—</span><span>Anything that loops or pulses</span></div>
+              <div class="row no"><span class="k">—</span><span>Shimmer loading states</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="lbl" style="margin-bottom:18px;">Agents — roles, not characters</div>
+            <div class="agents-row">
+              <div class="agent-block"><div class="agent-mark" style="background:var(--c-scout);">S</div><div class="nm">Scout</div></div>
+              <div class="agent-block"><div class="agent-mark" style="background:var(--c-analyst);">A</div><div class="nm">Analyst</div></div>
+              <div class="agent-block"><div class="agent-mark" style="background:var(--c-writer);">W</div><div class="nm">Writer</div></div>
+              <div class="agent-block"><div class="agent-mark" style="background:var(--c-watcher);">Wa</div><div class="nm">Watcher</div></div>
+              <div class="agent-block"><div class="agent-mark" style="background:var(--c-chief);">C</div><div class="nm">Chief</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 16. DONE ───────────── -->
+  <section data-label="16 What done looks like">
+    <div class="frame">
+      <div class="topbar"><span class="brand"><span class="dot"></span>Burrow</span><span>15 · What done looks like</span></div>
+      <div class="eyebrow">Acceptance</div>
+      <h2 class="title" style="max-width:1400px;">The frontend is done when a judge can't tell whether it's finished or hacked together.</h2>
+
+      <div class="done-list">
+        <div class="row"><span class="n">01</span><span class="v">No screenshot of any screen would feel <em>out of place in a Linear changelog post.</em></span></div>
+        <div class="row"><span class="n">02</span><span class="v">The lead card modal renders well enough to be <em>the hero image of the pitch.</em></span></div>
+        <div class="row"><span class="n">03</span><span class="v">Dark mode works on <em>every</em> screen.</span></div>
+        <div class="row"><span class="n">04</span><span class="v">Nothing pulses, glows, gradients, or sparkles.</span></div>
+        <div class="row"><span class="n">05</span><span class="v">The user can read the Evidence section <em>comfortably, without zooming.</em></span></div>
+      </div>
+
+      <div class="done-coda">
+        The best version of this UI looks boring — in the way good tools look boring. <em>Make it boring.</em>
+      </div>
+    </div>
+  </section>
+
+</deck-stage>
+
+</body>
+</html>

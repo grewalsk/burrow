@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-base: #FAFAF8;
+    --bg-surface: #F3F2EE;
+    --bg-elevated: #FFFFFF;
+
+    --text-primary: #1A1816;
+    --text-secondary: #87837B;
+    --text-tertiary: #B5B1A8;
+
+    --border-subtle: rgba(26, 24, 22, 0.08);
+    --border-default: rgba(26, 24, 22, 0.16);
+
+    --ink: #16213B;
+
+    --green: #2D7D5F;
+    --green-bg: rgba(45, 125, 95, 0.10);
+    --amber: #B08338;
+    --amber-bg: rgba(176, 131, 56, 0.10);
+    --red: #B0413E;
+
+    --gray-pill: rgba(26, 24, 22, 0.06);
+  }
+
+  [data-theme="dark"] {
+    --bg-base: #0F0E0D;
+    --bg-surface: #1A1916;
+    --bg-elevated: #23211D;
+
+    --text-primary: #F0EEE8;
+    --text-secondary: #9A958A;
+    --text-tertiary: #6A655C;
+
+    --border-subtle: rgba(240, 238, 232, 0.10);
+    --border-default: rgba(240, 238, 232, 0.18);
+
+    --gray-pill: rgba(240, 238, 232, 0.06);
+  }
+
+  html, body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .signal-card {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: background-color 100ms ease-out;
+  }
+  .signal-card:hover {
+    background: var(--bg-surface);
+  }
+}
