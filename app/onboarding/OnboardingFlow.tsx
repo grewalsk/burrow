@@ -1021,7 +1021,7 @@ type Doc = {
   stories: Story[];
 };
 
-function ConfirmForm({ url, onSubmit }: { url: string; onSubmit: () => void }) {
+function ConfirmForm({ url, onSubmit }: { url: string; onSubmit: (doc: Doc) => void }) {
   const [doc, setDoc] = useState<Doc>({
     one_liner: "Managed retrieval for serious teams.",
     description:
@@ -1238,7 +1238,7 @@ function ConfirmForm({ url, onSubmit }: { url: string; onSubmit: () => void }) {
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <GhostBtn>Save as draft</GhostBtn>
-            <PrimaryBtn onClick={onSubmit}>Send to brain →</PrimaryBtn>
+            <PrimaryBtn onClick={() => onSubmit(doc)}>Send to brain →</PrimaryBtn>
           </div>
         </div>
       </div>
@@ -1499,15 +1499,46 @@ export function OnboardingFlow() {
 
   const reset = () => setPhase("landing");
 
-  const finish = () => {
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem("burrow.onboarded", "1");
-      } catch {
-        // ignore storage failure; navigation still proceeds
-      }
-    }
-    router.push("/signals");
+  const ensureSessionCookie = () => {
+    if (typeof document === "undefined") return;
+    const has = document.cookie
+      .split(";")
+      .some((c) => c.trim().startsWith("burrow_session="));
+    if (has) return;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+    document.cookie = `burrow_session=${id}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+  };
+
+  const finish = (doc: Doc) => {
+    ensureSessionCookie();
+    const payload = {
+      one_liner: doc.one_liner,
+      description: doc.description,
+      icp: doc.icp,
+      pricing: doc.pricing
+        .map((p) => `${p.name} — ${p.price} (${p.note})`)
+        .join("; "),
+      features: doc.features,
+      competitors: doc.competitors,
+      stories: doc.stories.map((s) => ({
+        name: s.name,
+        description: s.detail,
+        source: s.src,
+      })),
+    };
+    // Fire-and-forget — auto-ingest failure must not block navigation.
+    void fetch("/api/onboarding/brain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "same-origin",
+    }).catch(() => {
+      // swallow — user proceeds to upload regardless
+    });
+    router.push("/onboarding/upload");
   };
 
   return (
