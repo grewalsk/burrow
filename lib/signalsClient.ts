@@ -74,6 +74,12 @@ export async function loadWorkspaceCompanyInfo(collectionName: string): Promise<
 
 // ---- Prompt + schema ---------------------------------------------------
 
+// IMPORTANT: do NOT add URL fields here that HogAI didn't directly scrape.
+// HogAI rejects (with "URL fields not bound to fetched sources") any URL
+// field where the value wasn't part of a fetched source. post_url is fine
+// (they scraped the post). author_profile_url is NOT fine — they never
+// fetch the profile page directly. We construct profile URLs locally from
+// (platform, author_handle) in parseHogSignals.
 export const SIGNALS_RESULT_SCHEMA = {
   type: "object",
   properties: {
@@ -84,7 +90,6 @@ export const SIGNALS_RESULT_SCHEMA = {
         properties: {
           platform: { type: "string" },
           author_handle: { type: "string" },
-          author_profile_url: { type: "string" },
           post_url: { type: "string" },
           post_text: { type: "string" },
           pain_point: { type: "string" },
@@ -133,8 +138,7 @@ export function buildSignalsPrompt(workspace: WorkspaceCompanyInfo): string {
     "FOR EACH SIGNAL RETURN:",
     "- platform: exactly one of \"X\", \"Reddit\", \"LinkedIn\"",
     "- author_handle: bare username (e.g. \"thehaydenbunn\" not \"@thehaydenbunn\", \"u/SpecialistAd7913\" → \"SpecialistAd7913\")",
-    "- author_profile_url: full profile URL we can use for enrichment later (e.g. https://linkedin.com/in/jane-doe, https://x.com/thehaydenbunn, https://reddit.com/user/SpecialistAd7913)",
-    "- post_url: link to the specific post",
+    "- post_url: link to the specific post (must be a real URL you fetched)",
     "- post_text: the actual post text (not summarized)",
     "- pain_point: 1 sentence — what they're frustrated about, in THEIR framing",
     "- why_relevant: 1 sentence — why this is a fit for OUR product specifically",
@@ -167,12 +171,29 @@ function extractRedditContext(postUrl: string): string {
 type HogSignalRaw = {
   platform?: unknown;
   author_handle?: unknown;
-  author_profile_url?: unknown;
   post_url?: unknown;
   post_text?: unknown;
   pain_point?: unknown;
   why_relevant?: unknown;
 };
+
+// Construct a profile URL from (platform, handle) since HogAI won't emit
+// URLs they didn't directly fetch. Best-effort: LinkedIn handle conventions
+// vary (vanity vs numeric IDs); use the most common form. Enrichment can
+// still take this URL — if it doesn't resolve cleanly, we fall back to
+// reply-mode.
+function constructProfileUrl(platform: Platform, handle: string): string {
+  const clean = handle.replace(/^[@u]\/?|^@/, "").trim();
+  if (!clean) return "";
+  switch (platform) {
+    case "X":
+      return `https://x.com/${clean}`;
+    case "LinkedIn":
+      return `https://linkedin.com/in/${clean}`;
+    case "Reddit":
+      return `https://reddit.com/user/${clean}`;
+  }
+}
 
 export function parseHogSignals(operationResult: unknown): ParsedSignal[] {
   // HogAI nests: result.data.signals (the result object from polled operation)
@@ -190,11 +211,14 @@ export function parseHogSignals(operationResult: unknown): ParsedSignal[] {
     // Required fields — skip silently if missing
     if (!platform || !post_url || !post_text) continue;
 
+    const author_handle =
+      typeof raw.author_handle === "string" ? raw.author_handle.replace(/^[@u]\/?|^@/, "") : "";
+
     parsed.push({
       signal_id: shortHash(post_url),
       platform,
-      author_handle: typeof raw.author_handle === "string" ? raw.author_handle.replace(/^[@u]\/?|^@/, "") : "",
-      author_profile_url: typeof raw.author_profile_url === "string" ? raw.author_profile_url : "",
+      author_handle,
+      author_profile_url: constructProfileUrl(platform, author_handle),
       post_url,
       post_text,
       pain_point: typeof raw.pain_point === "string" ? raw.pain_point : "",
@@ -309,8 +333,12 @@ export async function kickoffSignalsFetch(collectionName: string): Promise<
   });
 
   if (res.error || !res.body) {
+    console.error("[signals] HogAI deep-research kickoff failed:", res.error, res.body);
     return { ok: false, error: res.error ?? "HogAI did not return an operationId", status: 502 };
   }
 
+  console.log(`[signals] HogAI deep-research started: jobId=${res.body.operationId} (poll: ${HOG_BASE_FOR_LOG}/api/operations/${res.body.operationId})`);
   return { ok: true, jobId: res.body.operationId, promptPreview: prompt.slice(0, 240) };
 }
+
+const HOG_BASE_FOR_LOG = process.env.THEHOG_BASE_URL || "https://developer.thehog.ai";

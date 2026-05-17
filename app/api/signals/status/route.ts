@@ -61,12 +61,16 @@ export async function GET(req: Request): Promise<Response> {
 
   // Failed
   if (op.status !== "succeeded") {
+    console.error(`[signals] HogAI operation ${jobId} failed with status=${op.status}`);
+    console.error(`[signals] HogAI error field:`, op.error);
+    console.error(`[signals] HogAI full body:`, JSON.stringify(op, null, 2).slice(0, 2000));
     if (cached) setCachedFetch(sessionId, { ...cached, completedAt: Date.now(), signals: [] });
     return NextResponse.json({
       ok: false,
       status: "failed",
       hog_status: op.status,
       error: op.error ?? "HogAI operation failed",
+      raw: op,
     });
   }
 
