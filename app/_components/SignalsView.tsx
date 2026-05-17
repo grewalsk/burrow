@@ -26,6 +26,7 @@ export function SignalsView() {
   const [loading, setLoading] = useState(true);
   const [flow, setFlow] = useState<FlowStep>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -39,19 +40,100 @@ export function SignalsView() {
     }
   }, []);
 
+  // Polls /api/signals/status for an in-flight HogAI job. Returns true when
+  // terminal (done/failed) so callers can stop polling. Updates elapsed sec
+  // and signal list on success.
+  const pollJobOnce = useCallback(
+    async (jobId: string): Promise<"processing" | "done" | "failed"> => {
+      try {
+        const r = await fetch(`/api/signals/status?jobId=${encodeURIComponent(jobId)}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const j = await r.json();
+        if (j.status === "done") {
+          // ZE indexing has a brief delay after store; give it a beat then list.
+          setTimeout(load, 1500);
+          return "done";
+        }
+        if (j.status === "failed" || j.ok === false) {
+          const reason = j.error ?? j.hog_status ?? "HogAI operation failed";
+          setError(`Fetch failed: ${reason}`);
+          return "failed";
+        }
+        if (typeof j.elapsed_s === "number") setElapsedSec(j.elapsed_s);
+        return "processing";
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Status poll failed");
+        return "failed";
+      }
+    },
+    [load],
+  );
+
+  const startPolling = useCallback(
+    (jobId: string) => {
+      window.localStorage.setItem("burrow.signalsJobId", jobId);
+      let active = true;
+      const tick = async () => {
+        if (!active) return;
+        const status = await pollJobOnce(jobId);
+        if (status !== "processing") {
+          active = false;
+          window.localStorage.removeItem("burrow.signalsJobId");
+          setFlow("idle");
+          setElapsedSec(0);
+          return;
+        }
+        window.setTimeout(tick, 10_000);
+      };
+      tick();
+      return () => {
+        active = false;
+      };
+    },
+    [pollJobOnce],
+  );
+
   useEffect(() => {
     load();
   }, [load]);
 
+  // Resume polling on mount if there's an in-flight jobId from a previous tab
+  // load (page refresh, navigated away and back, etc.). HogAI retains the
+  // operation result so the server-side proxy can still grab it.
+  useEffect(() => {
+    const inFlight = window.localStorage.getItem("burrow.signalsJobId");
+    if (inFlight && inFlight !== "mock") {
+      setFlow("fetching");
+      startPolling(inFlight);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onFetch = async () => {
     setFlow("fetching");
     setError(null);
+    setElapsedSec(0);
     try {
-      const r = await fetch("/api/signals/fetch", { method: "POST" });
+      const r = await fetch("/api/signals/fetch", { method: "POST", credentials: "same-origin" });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "fetch failed");
-      // ZE indexing has a brief delay; give it a beat before re-listing.
-      setTimeout(load, 600);
+
+      // Two paths converge here:
+      //   - status="done" (mock mode OR 24h cache hit): signals already in ZE
+      //   - status="queued" (real HogAI): jobId points to in-flight operation
+      if (j.status === "done") {
+        setTimeout(load, 600);
+        setFlow("idle");
+        return;
+      }
+      if (j.status === "queued" && j.jobId) {
+        startPolling(j.jobId);
+        return;
+      }
+      // Unknown status — log and reset
+      setError(`Unexpected fetch response: ${JSON.stringify(j).slice(0, 120)}`);
       setFlow("idle");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Fetch failed");
@@ -136,7 +218,11 @@ export function SignalsView() {
               opacity: flow !== "idle" ? 0.5 : 1,
             }}
           >
-            {flow === "fetching" ? "Fetching…" : "Fetch signals →"}
+            {flow === "fetching"
+              ? elapsedSec > 0
+                ? `Researching… ${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")} (≈4 min total)`
+                : "Researching…"
+              : "Fetch signals →"}
           </button>
           {signals.length > 0 && (
             <button
@@ -174,10 +260,12 @@ export function SignalsView() {
       ) : empty ? (
         <div className="mt-16 flex flex-col items-center gap-3">
           <p className="text-text-secondary" style={{ fontSize: 14 }}>
-            No signals yet.
+            {flow === "fetching" ? "Scout is researching your social corpus…" : "No signals yet."}
           </p>
           <p className="text-text-tertiary" style={{ fontSize: 12 }}>
-            Click "Fetch signals →" to pull from Scout (mock HogAI).
+            {flow === "fetching"
+              ? "HogAI deep-research takes about 4 minutes. Safe to leave this tab — we'll pick up where we left off."
+              : "Click \"Fetch signals →\" to pull from Scout."}
           </p>
         </div>
       ) : (

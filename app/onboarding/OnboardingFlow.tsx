@@ -1564,6 +1564,10 @@ export function OnboardingFlow() {
   };
 
   const handleLandingSubmit = () => {
+    // Every new URL submitted from Landing = a brand-new ZeroEntropy workspace.
+    // Rotating the session cookie before kicking off research ensures the
+    // dashboard, top-strip counts, and signals view all start at zero.
+    rotateSessionCookie();
     startResearch(url);
     setPhase("researching");
   };
@@ -1579,6 +1583,25 @@ export function OnboardingFlow() {
         ? crypto.randomUUID()
         : Math.random().toString(36).slice(2);
     document.cookie = `burrow_session=${id}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+  };
+
+  // Rotates the session cookie so a fresh onboarding gets a fresh ZE workspace
+  // (collection `brain-<newId>`). Wipes localStorage keys tied to the previous
+  // workspace so onboarded/brainSeeded/signalsJobId don't bleed across companies.
+  const rotateSessionCookie = () => {
+    if (typeof document === "undefined") return;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+    document.cookie = `burrow_session=${id}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+    try {
+      window.localStorage.removeItem("burrow.onboarded");
+      window.localStorage.removeItem("burrow.brainSeeded");
+      window.localStorage.removeItem("burrow.signalsJobId");
+    } catch {
+      // ignore — quota or privacy mode
+    }
   };
 
   const finish = (doc: Doc) => {
