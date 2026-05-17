@@ -141,15 +141,21 @@ export function SignalsView() {
     }
   };
 
+  const [stageDetail, setStageDetail] = useState<string>("");
+
   const onGenerateOutreach = async () => {
     setFlow("ranking");
     setError(null);
+    setStageDetail("");
     try {
+      setStageDetail("Scoring all signals against your ICP with ZeroEntropy's zerank-1-small cross-encoder. Picking the top 5 fits.");
       let r = await fetch("/api/signals/rank", { method: "POST" });
       let j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "rank failed");
+      const rankedCount = Array.isArray(j.candidates) ? j.candidates.length : 5;
 
       setFlow("enriching");
+      setStageDetail(`Looking up contact info for ${rankedCount} ranked signals via HogAI enrichment. Reddit signals route to reply mode automatically. This takes 30-55 seconds.`);
       r = await fetch("/api/signals/enrich", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,16 +163,24 @@ export function SignalsView() {
       });
       j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "enrich failed");
+      const enrichedTotal = Array.isArray(j.enriched) ? j.enriched.length : rankedCount;
+      const emailCount = Array.isArray(j.enriched)
+        ? j.enriched.filter((e: { mode: string }) => e.mode === "email").length
+        : 0;
+      const replyCount = enrichedTotal - emailCount;
 
       setFlow("drafting");
+      setStageDetail(`Writing ${enrichedTotal} drafts with Gemma 4 31B grounded in your win stories from ZeroEntropy (${emailCount} email, ${replyCount} reply).`);
       r = await fetch("/api/drafts/generate", { method: "POST" });
       j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "draft failed");
 
       setFlow("done");
+      setStageDetail("Drafts ready. Redirecting to #drafts.");
       router.push("/drafts");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Outreach generation failed");
+      setStageDetail("");
       setFlow("idle");
     }
   };
@@ -251,6 +265,41 @@ export function SignalsView() {
         <p className="mt-4 text-text-secondary" style={{ fontSize: 12 }}>
           {error}
         </p>
+      )}
+
+      {(flow === "ranking" || flow === "enriching" || flow === "drafting" || flow === "done") && (
+        <div
+          className="mt-4 flex flex-col gap-1 rounded border border-border-subtle bg-bg-surface px-4 py-3"
+          style={{ borderRadius: 4 }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block animate-pulse rounded-full"
+              style={{
+                width: 6,
+                height: 6,
+                background: flow === "done" ? "var(--green, #2D7D5F)" : "var(--ink)",
+              }}
+            />
+            <span
+              className="text-text-primary"
+              style={{ fontSize: 13, fontWeight: 500 }}
+            >
+              {flow === "ranking" && "Step 1 of 3 — Ranking signals"}
+              {flow === "enriching" && "Step 2 of 3 — Enriching contacts"}
+              {flow === "drafting" && "Step 3 of 3 — Drafting outreach"}
+              {flow === "done" && "Done — opening drafts"}
+            </span>
+          </div>
+          {stageDetail && (
+            <p
+              className="text-text-secondary"
+              style={{ fontSize: 12, lineHeight: 1.55, marginLeft: 14 }}
+            >
+              {stageDetail}
+            </p>
+          )}
+        </div>
       )}
 
       {loading ? (
