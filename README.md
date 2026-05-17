@@ -28,7 +28,6 @@ Create `.env.local` in the project root with the following keys:
 # ZeroEntropy — vector store for the company brain (won deals, ICP, brand guide, signals)
 # Get a key at https://app.zeroentropy.dev/api-keys
 ZEROENTROPY_API_KEY=ze_...
-ZERO_ENTROPY_MOCK=false
 
 # Google AI Studio — Gemma 4 31B (cr_agent extraction + outreach draft generation)
 # Free key, no credit card: https://aistudio.google.com/apikey
@@ -42,9 +41,6 @@ GOOGLE_GENAI_API_KEY=AIza...
 THEHOG_ACCESS_KEY=ak_...
 THEHOG_SECRET_KEY=sk_...
 THEHOG_BASE_URL=https://developer.thehog.ai
-# Set to "true" to use the in-memory mockHogAI (no credits, instant returns)
-# Useful when iterating on UI without burning HogAI deep-research credits.
-HOGAI_MOCK=false
 ```
 
 `.env.example` in the repo has the same template with comments.
@@ -86,9 +82,3 @@ npm run dev          # http://localhost:3000
 Session model: `burrow_session` cookie is rotated on each new onboarding so every URL = a fresh ZE collection (`brain-<sessionId>`). Drop the cookie, start over.
 
 See `docs/specs/` for the full architecture and design specs.
-
----
-
-## Mock mode (no credits)
-
-Set both `ZERO_ENTROPY_MOCK=true` and `HOGAI_MOCK=true` to run the entire flow against in-process mocks. UI works end-to-end with deterministic fake data. Useful for design iteration.
