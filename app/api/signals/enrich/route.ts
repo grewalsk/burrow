@@ -72,8 +72,16 @@ async function enrichOneSignal(
   const profileUrl = String(meta.author_profile_url ?? "");
   const postUrl = String(meta.post_url ?? "");
 
-  // Already enriched — return cached metadata, no HogAI call
-  if (meta.enriched === "true") {
+  // Already enriched — return cached metadata, no HogAI call.
+  // EXCEPT: if a LinkedIn signal was previously cached into reply-mode
+  // with no email, that means enrichment failed last time (often due to
+  // a payload-shape bug). Retry it on the next pass so a fixed enrichment
+  // path can actually succeed without forcing a fresh 1000-credit fetch.
+  const hadFailedLinkedIn =
+    platform === "LinkedIn" &&
+    meta.outreach_mode === "reply" &&
+    !String(meta.enriched_email ?? "").trim();
+  if (meta.enriched === "true" && !hadFailedLinkedIn) {
     return {
       signal_id,
       mode: (String(meta.outreach_mode ?? "email") as "email" | "reply"),
