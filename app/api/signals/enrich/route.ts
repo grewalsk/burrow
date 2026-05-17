@@ -228,6 +228,9 @@ async function enrichOneSignal(
   }
 
   const contact = extractContactFields(opRes.body.result);
+  console.log(
+    `[enrich] signal_id=${signal_id} platform=${platform} handle=${handle} → extracted email=${contact.email || "(none)"} name=${contact.name || "(none)"}`,
+  );
 
   // No email returned → still mark enriched but reply-mode
   if (!contact.email) {

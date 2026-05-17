@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import {
   addTextDocument,
+  deleteByMetadata,
   ensureCollection,
   listDocuments,
   updateMetadata,
@@ -43,6 +44,27 @@ export async function POST(): Promise<Response> {
         contact_role: d.metadata.contact_role ? String(d.metadata.contact_role) : undefined,
         contact_company: d.metadata.contact_company ? String(d.metadata.contact_company) : undefined,
       };
+
+      const incomingEmail = String(d.metadata.contact_email ?? "");
+      console.log(
+        `[drafts/generate] signal_id=${signal.signal_id} source=${signal.source} handle=${signal.handle} contact_email=${incomingEmail || "(empty)"}`,
+      );
+
+      // Delete any existing pending draft(s) for this signal so the user
+      // never sees stale empty-email drafts left over from a prior run.
+      try {
+        const deleted = await deleteByMetadata(collection, {
+          doc_type: "draft",
+          signal_id: signal.signal_id,
+          status: "pending",
+        });
+        if (deleted.deleted > 0) {
+          console.log(`[drafts/generate] cleared ${deleted.deleted} stale draft(s) for signal_id=${signal.signal_id}`);
+        }
+      } catch (delErr) {
+        // Non-fatal — worst case we end up with duplicate drafts
+        console.warn("[drafts/generate] dedup delete failed:", delErr);
+      }
 
       const draft = await generateDraft({
         collectionName: collection,

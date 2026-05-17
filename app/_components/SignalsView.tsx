@@ -174,10 +174,18 @@ export function SignalsView() {
       r = await fetch("/api/drafts/generate", { method: "POST" });
       j = await r.json();
       if (!j.ok) throw new Error(j.error ?? "draft failed");
+      const draftsCount = Array.isArray(j.drafts) ? j.drafts.length : enrichedTotal;
+      const errorCount = Array.isArray(j.errors) ? j.errors.length : 0;
 
       setFlow("done");
-      setStageDetail("Drafts ready. Redirecting to #drafts.");
-      router.push("/drafts");
+      // Keep the success panel visible for 3 seconds so the user knows the
+      // full flow completed before we navigate away.
+      setStageDetail(
+        errorCount > 0
+          ? `Done — created ${draftsCount} draft${draftsCount === 1 ? "" : "s"}, ${errorCount} error${errorCount === 1 ? "" : "s"}. Opening #drafts in 3 seconds…`
+          : `Done — created ${draftsCount} draft${draftsCount === 1 ? "" : "s"} with Gemma. Opening #drafts in 3 seconds…`,
+      );
+      window.setTimeout(() => router.push("/drafts"), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Outreach generation failed");
       setStageDetail("");
