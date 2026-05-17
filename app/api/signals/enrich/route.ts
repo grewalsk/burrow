@@ -19,18 +19,23 @@ export const runtime = "nodejs";
 // should fit even for 5 signals when each individual enrichment is ≤55s.
 export const maxDuration = 60;
 
-// HogAI's enrichment result shape — fields are best-effort; any may be missing
-type HogEnrichmentResult = {
-  data?: {
-    person?: { name?: string; email?: string; role?: string; title?: string; company?: string };
-    contact?: { email?: string; phone?: string };
-    company?: { name?: string };
-    name?: string;
-    email?: string;
-    role?: string;
-    title?: string;
-  };
-};
+// Actual HogAI enrichment shape (verified empirically from a succeeded run):
+//   {
+//     "contact": { "email": ["a@b.com", "..."], "phone": ["+1..."] },
+//     "person.name": null, "person.title": null, "person.bio": null,
+//     "company.name": null, "company.size": null, ...
+//   }
+// Note: NO `.data` wrapper. `contact` is nested. Email is ALWAYS an array
+// (often with multiple addresses ranked by HogAI's confidence — we pick
+// the first). Other fields are flat with DOTTED keys, not nested objects.
+function pickFirstString(v: unknown): string {
+  if (Array.isArray(v)) {
+    const first = v.find((x) => typeof x === "string" && x.trim());
+    return typeof first === "string" ? first : "";
+  }
+  if (typeof v === "string") return v;
+  return "";
+}
 
 function extractContactFields(result: unknown): {
   name: string;
@@ -38,12 +43,13 @@ function extractContactFields(result: unknown): {
   role: string;
   company: string;
 } {
-  const d = (result as HogEnrichmentResult)?.data ?? {};
+  const r = (result as Record<string, unknown>) ?? {};
+  const contact = (r.contact as { email?: unknown; phone?: unknown }) ?? {};
   return {
-    name: d.person?.name ?? d.name ?? "",
-    email: d.contact?.email ?? d.person?.email ?? d.email ?? "",
-    role: d.person?.role ?? d.person?.title ?? d.role ?? d.title ?? "",
-    company: d.company?.name ?? d.person?.company ?? "",
+    email: pickFirstString(contact.email),
+    name: pickFirstString(r["person.name"]),
+    role: pickFirstString(r["person.title"]) || pickFirstString(r["person.headline"]),
+    company: pickFirstString(r["company.name"]),
   };
 }
 
