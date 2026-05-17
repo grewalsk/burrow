@@ -2,24 +2,80 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+
+type ChannelSlug = "signals" | "drafts" | "sent" | "briefing" | "ask";
 
 type Channel = {
-  slug: "signals" | "drafts" | "sent" | "briefing" | "ask";
+  slug: ChannelSlug;
   label: string;
   unread?: number;
 };
 
-const CHANNELS: Channel[] = [
-  { slug: "signals", label: "#signals", unread: 12 },
-  { slug: "drafts", label: "#drafts", unread: 4 },
-  { slug: "sent", label: "#sent" },
-  { slug: "briefing", label: "#briefing", unread: 1 },
-  { slug: "ask", label: "#ask" },
-];
+type BrainStatus = {
+  brand_docs: number;
+  signals: number;
+  ranked_signals: number;
+  drafts_pending: number;
+  drafts_sent: number;
+  grounded_pct: number;
+};
+
+// Channel order is stable; counts come from /api/brain/status (same source
+// of truth as the TopStrip counters so the two are always consistent).
+const CHANNEL_ORDER: ChannelSlug[] = ["signals", "drafts", "sent", "briefing", "ask"];
+const CHANNEL_LABEL: Record<ChannelSlug, string> = {
+  signals: "#signals",
+  drafts: "#drafts",
+  sent: "#sent",
+  briefing: "#briefing",
+  ask: "#ask",
+};
+
+function unreadFor(slug: ChannelSlug, status: BrainStatus | null): number | undefined {
+  if (!status) return undefined;
+  switch (slug) {
+    case "signals":
+      return status.signals;
+    case "drafts":
+      return status.drafts_pending;
+    case "sent":
+      return status.drafts_sent;
+    case "briefing":
+    case "ask":
+      return undefined; // no per-item count for overview / placeholder
+  }
+}
 
 export function LeftRail() {
   const pathname = usePathname();
+  const [status, setStatus] = useState<BrainStatus | null>(null);
   const live = true; // placeholder for Scout cron status
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/brain/status", { cache: "no-store" });
+        const j = await r.json();
+        if (!cancelled && j.ok && j.status) setStatus(j.status as BrainStatus);
+      } catch {
+        // keep last known state on transient error
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const channels: Channel[] = CHANNEL_ORDER.map((slug) => ({
+    slug,
+    label: CHANNEL_LABEL[slug],
+    unread: unreadFor(slug, status),
+  }));
 
   return (
     <aside
@@ -27,7 +83,7 @@ export function LeftRail() {
       style={{ width: 220 }}
     >
       <nav className="flex flex-col gap-[2px] p-3 pt-4">
-        {CHANNELS.map((ch) => {
+        {channels.map((ch) => {
           const href = `/${ch.slug}`;
           const selected =
             pathname === href || (pathname === "/" && ch.slug === "signals");
