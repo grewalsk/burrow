@@ -72,12 +72,43 @@ export async function startDeepResearch(params: {
 }
 
 // ---- enrichments --------------------------------------------------------
+//
+// Per the implementation guide, HogAI's enrichment endpoint takes the shape:
+//   { identifier: { linkedin_url | person_id | company_domain }, fields: [...] }
+// Only LinkedIn URL is reliably usable from our signal data — X handles
+// don't map cleanly to a Hog identifier, so X signals should not call this.
 
-export type EnrichmentPayload = {
-  linkedinUrl?: string;
-  xUserId?: string;
-  redditUsername?: string;
+export type EnrichmentIdentifier = {
+  linkedin_url?: string;
+  person_id?: string;
+  company_domain?: string;
 };
+
+// Request the "kitchen sink" of fields — the implementation guide explicitly
+// recommends this so the Writer has rich grounding when drafting.
+const ENRICHMENT_FIELDS = [
+  // Person basics
+  "person.name",
+  "person.title",
+  "person.headline",
+  "person.location",
+  "person.bio",
+  "person.seniority",
+  // Contact
+  "contact.email",
+  "contact.phone",
+  "contact.linkedin_url",
+  "contact.x_url",
+  // Company
+  "company.name",
+  "company.domain",
+  "company.size",
+  "company.industry",
+  "company.description",
+  // Activity / signals
+  "activity.recent_posts",
+  "activity.engagement_topics",
+];
 
 export type EnrichmentStart = {
   id: string;
@@ -85,10 +116,16 @@ export type EnrichmentStart = {
   status: string;
 };
 
-export async function startEnrichment(payload: EnrichmentPayload): Promise<HogFetchResult<EnrichmentStart>> {
+export async function startEnrichment(
+  identifier: EnrichmentIdentifier,
+  opts?: { fields?: string[] },
+): Promise<HogFetchResult<EnrichmentStart>> {
   return hogFetch<EnrichmentStart>("/api/enrichments", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      identifier,
+      fields: opts?.fields ?? ENRICHMENT_FIELDS,
+    }),
   });
 }
 

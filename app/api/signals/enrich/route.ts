@@ -10,7 +10,7 @@ import {
   isHogMockMode,
   startEnrichment,
   pollOperationUntilDone,
-  type EnrichmentPayload,
+  type EnrichmentIdentifier,
 } from "@/lib/hogClient";
 import { enrichContact, type HogSource } from "@/lib/mockHogAI";
 
@@ -129,8 +129,11 @@ async function enrichOneSignal(
     };
   }
 
-  // Reddit → reply-mode (no enrichment burned)
-  if (platform === "Reddit") {
+  // Reddit AND X → reply-mode. HogAI's enrichment endpoint only accepts
+  // linkedin_url / person_id / company_domain (per the implementation guide).
+  // Neither Reddit usernames nor X handles map to those identifiers cleanly,
+  // so for those platforms we skip enrichment and route to a platform reply.
+  if (platform === "Reddit" || platform === "X") {
     await updateMetadata({
       collectionName: collection,
       documentPath: doc.path,
@@ -145,17 +148,24 @@ async function enrichOneSignal(
         contact_company: String(meta.contact_company ?? meta.enriched_company ?? ""),
       },
     });
-    return { signal_id, mode: "reply", platform, handle, post_url: postUrl, reason: "reddit_no_enrichment" };
+    return {
+      signal_id,
+      mode: "reply",
+      platform,
+      handle,
+      post_url: postUrl,
+      reason: platform === "Reddit" ? "reddit_no_enrichment" : "x_no_enrichment_identifier",
+    };
   }
 
-  // X / LinkedIn → real HogAI enrichment, fall back to reply on miss
-  const payload: EnrichmentPayload =
-    platform === "LinkedIn"
-      ? { linkedinUrl: profileUrl || `https://linkedin.com/in/${handle}` }
-      : { xUserId: handle };
+  // LinkedIn → real HogAI enrichment, fall back to reply on miss
+  const identifier: EnrichmentIdentifier = {
+    linkedin_url: profileUrl || `https://linkedin.com/in/${handle}`,
+  };
 
-  const startRes = await startEnrichment(payload);
+  const startRes = await startEnrichment(identifier);
   if (startRes.error || !startRes.body) {
+    console.error(`[enrich] HogAI start failed for signal_id=${signal_id} (linkedin_url=${identifier.linkedin_url}):`, startRes.error, JSON.stringify(startRes.body).slice(0, 500));
     await updateMetadata({
       collectionName: collection,
       documentPath: doc.path,
